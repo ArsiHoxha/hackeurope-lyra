@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -13,6 +13,9 @@ import {
   ArrowRight,
   Fingerprint,
   AlertTriangle,
+  Mic,
+  Square,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,10 +30,12 @@ import {
   type WatermarkResponse,
   type DataType,
 } from "@/lib/api";
+import { saveWatermarkResult } from "@/lib/store";
+import { blobToWavBase64 } from "@/lib/audio";
 
 // ── Component ─────────────────────────────────────────────────────
 export function WatermarkTab() {
-  const [inputMode, setInputMode] = useState<"text" | "file">("text");
+  const [inputMode, setInputMode] = useState<"text" | "file" | "audio">("text");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -41,6 +46,153 @@ export function WatermarkTab() {
   const [resultDataType, setResultDataType] = useState<DataType>("text");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // ── Audio recording state ─────────────────────────────────────
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    };
+  }, [audioUrl]);
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      // Set up analyser for waveform visualization
+      const audioCtx = new AudioContext();
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      // Start waveform drawing
+      drawWaveform();
+
+      // Create MediaRecorder
+      const recorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
+        setAudioBlob(blob);
+        const url = URL.createObjectURL(blob);
+        setAudioUrl(url);
+        // Stop the stream tracks
+        stream.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+        // Stop waveform
+        if (animFrameRef.current) {
+          cancelAnimationFrame(animFrameRef.current);
+          animFrameRef.current = null;
+        }
+        audioCtx.close();
+      };
+
+      recorder.start(100); // collect in 100ms chunks
+      setIsRecording(true);
+      setRecordingTime(0);
+      setAudioBlob(null);
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        setAudioUrl(null);
+      }
+
+      // Timer
+      timerRef.current = setInterval(() => {
+        setRecordingTime((t) => t + 1);
+      }, 1000);
+    } catch {
+      setError("Microphone access denied. Please allow microphone permissions.");
+    }
+  }, [audioUrl]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const discardRecording = useCallback(() => {
+    if (audioUrl) URL.revokeObjectURL(audioUrl);
+    setAudioBlob(null);
+    setAudioUrl(null);
+    setRecordingTime(0);
+  }, [audioUrl]);
+
+  const drawWaveform = useCallback(() => {
+    const draw = () => {
+      animFrameRef.current = requestAnimationFrame(draw);
+      const canvas = canvasRef.current;
+      const analyser = analyserRef.current;
+      if (!canvas || !analyser) return;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      analyser.getByteTimeDomainData(dataArray);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // Draw waveform
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = getComputedStyle(canvas).getPropertyValue("color") || "#a1a1aa";
+      ctx.beginPath();
+
+      const sliceWidth = w / bufferLength;
+      let x = 0;
+
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = (v * h) / 2;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+        x += sliceWidth;
+      }
+
+      ctx.lineTo(w, h / 2);
+      ctx.stroke();
+    };
+
+    draw();
+  }, []);
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
 
   const embed = useCallback(async () => {
     setLoading(true);
@@ -57,6 +209,29 @@ export function WatermarkTab() {
         });
         setResult(res);
         setResultDataType("text");
+        saveWatermarkResult({
+          dataType: "text",
+          label: text.slice(0, 80).replace(/\n/g, " "),
+          model: modelName || "Unknown",
+          watermarkId: res.watermark_metadata.watermark_id,
+        });
+      } else if (inputMode === "audio" && audioBlob) {
+        // Convert recorded audio → WAV base64
+        const wavBase64 = await blobToWavBase64(audioBlob);
+        const res = await watermarkContent({
+          data_type: "audio",
+          data: wavBase64,
+          watermark_strength: strength,
+          model_name: modelName || null,
+        });
+        setResult(res);
+        setResultDataType("audio");
+        saveWatermarkResult({
+          dataType: "audio",
+          label: `Recording (${formatTime(recordingTime)})`,
+          model: modelName || "Unknown",
+          watermarkId: res.watermark_metadata.watermark_id,
+        });
       } else if (file) {
         const dataType = detectDataType(file);
         let data: string;
@@ -73,6 +248,12 @@ export function WatermarkTab() {
         });
         setResult(res);
         setResultDataType(dataType);
+        saveWatermarkResult({
+          dataType,
+          label: file.name,
+          model: modelName || "Unknown",
+          watermarkId: res.watermark_metadata.watermark_id,
+        });
       }
     } catch (err) {
       setError(
@@ -83,9 +264,14 @@ export function WatermarkTab() {
     } finally {
       setLoading(false);
     }
-  }, [inputMode, text, file, strength, modelName]);
+  }, [inputMode, text, file, audioBlob, recordingTime, strength, modelName]);
 
-  const canEmbed = inputMode === "text" ? text.trim().length > 0 : !!file;
+  const canEmbed =
+    inputMode === "text"
+      ? text.trim().length > 0
+      : inputMode === "audio"
+        ? !!audioBlob
+        : !!file;
 
   const copyOutput = () => {
     if (!result) return;
@@ -125,6 +311,28 @@ export function WatermarkTab() {
       const a = document.createElement("a");
       a.href = url;
       a.download = `watermarked-${Date.now()}.wav`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (resultDataType === "pdf") {
+      const byteString = atob(result.watermarked_data);
+      const arr = new Uint8Array(byteString.length);
+      for (let i = 0; i < byteString.length; i++) arr[i] = byteString.charCodeAt(i);
+      const blob = new Blob([arr], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `watermarked-${Date.now()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (resultDataType === "video") {
+      const byteString = atob(result.watermarked_data);
+      const arr = new Uint8Array(byteString.length);
+      for (let i = 0; i < byteString.length; i++) arr[i] = byteString.charCodeAt(i);
+      const blob = new Blob([arr], { type: "video/mp4" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `watermarked-${Date.now()}.mp4`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -169,7 +377,7 @@ export function WatermarkTab() {
         <div className="space-y-6">
           {/* Mode toggle */}
           <div className="flex gap-6 border-b border-border/30 pb-px">
-            {(["text", "file"] as const).map((mode) => (
+            {(["text", "file", "audio"] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setInputMode(mode)}
@@ -179,7 +387,11 @@ export function WatermarkTab() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {mode === "text" ? "Text / Code" : "File Upload"}
+                {mode === "text"
+                  ? "Text / Code"
+                  : mode === "file"
+                    ? "File Upload"
+                    : "Record Audio"}
                 {inputMode === mode && (
                   <motion.div
                     layoutId="watermark-mode"
@@ -230,7 +442,7 @@ export function WatermarkTab() {
                   Click to upload or drag & drop
                 </p>
                 <p className="mt-1 text-xs font-light text-muted-foreground/40">
-                  Text, code, images (PNG), audio (WAV) — up to 10 MB
+                  Text, images, audio, PDF, video — up to 10 MB
                 </p>
                 <input
                   ref={fileRef}
@@ -239,7 +451,7 @@ export function WatermarkTab() {
                   onChange={(e) => {
                     if (e.target.files?.[0]) setFile(e.target.files[0]);
                   }}
-                  accept=".txt,.py,.js,.ts,.jsx,.tsx,.md,.json,.png,.jpg,.jpeg,.webp,.wav"
+                  accept=".txt,.py,.js,.ts,.jsx,.tsx,.md,.json,.png,.jpg,.jpeg,.webp,.wav,.pdf,.mp4,.avi,.mkv,.mov,.webm"
                 />
               </div>
               {file && (
@@ -270,6 +482,106 @@ export function WatermarkTab() {
                   >
                     <X className="size-3.5 text-muted-foreground" />
                   </Button>
+                </motion.div>
+              )}
+            </motion.div>
+          )}
+
+          {/* Audio recording */}
+          {inputMode === "audio" && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="space-y-4"
+            >
+              {/* Waveform / recorder area */}
+              <div className="flex flex-col items-center rounded-2xl border border-border/40 bg-card py-8 px-6">
+                {/* Live waveform canvas (visible while recording) */}
+                {isRecording && (
+                  <canvas
+                    ref={canvasRef}
+                    width={400}
+                    height={80}
+                    className="mb-4 w-full max-w-sm text-muted-foreground"
+                    style={{ color: "currentColor" }}
+                  />
+                )}
+
+                {/* Recording timer */}
+                {isRecording && (
+                  <div className="mb-4 flex items-center gap-2">
+                    <div className="size-2 animate-pulse rounded-full bg-red-500" />
+                    <span className="font-mono text-lg font-light tabular-nums">
+                      {formatTime(recordingTime)}
+                    </span>
+                  </div>
+                )}
+
+                {/* Idle state */}
+                {!isRecording && !audioBlob && (
+                  <>
+                    <Mic className="mb-3 size-8 text-muted-foreground/30" />
+                    <p className="text-sm font-light text-muted-foreground/60">
+                      Click to start recording
+                    </p>
+                    <p className="mt-1 text-xs font-light text-muted-foreground/30">
+                      Record voice or audio from your microphone
+                    </p>
+                  </>
+                )}
+
+                {/* Controls */}
+                <div className="mt-4 flex items-center gap-3">
+                  {!isRecording && !audioBlob && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="gap-2 rounded-full border-red-500/30 px-6 text-red-500 hover:bg-red-500/10 hover:text-red-500"
+                      onClick={startRecording}
+                    >
+                      <Mic className="size-4" />
+                      Start Recording
+                    </Button>
+                  )}
+
+                  {isRecording && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="gap-2 rounded-full border-border px-6"
+                      onClick={stopRecording}
+                    >
+                      <Square className="size-3.5 fill-current" />
+                      Stop
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Audio preview (after recording) */}
+              {audioUrl && !isRecording && (
+                <motion.div
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-3 rounded-xl border border-border/30 bg-card px-4 py-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Mic className="size-4 text-muted-foreground/50" />
+                      <span className="text-sm font-light">
+                        Recording · {formatTime(recordingTime)}
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+                      onClick={discardRecording}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                  <audio controls src={audioUrl} className="w-full" />
                 </motion.div>
               )}
             </motion.div>
@@ -414,6 +726,40 @@ export function WatermarkTab() {
                         controls
                         src={`data:audio/wav;base64,${result.watermarked_data}`}
                         className="w-full"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* PDF notice */}
+                {resultDataType === "pdf" && (
+                  <div className="border-b border-border/30 px-8 py-5">
+                    <p className="text-[10px] font-normal uppercase tracking-[0.15em] text-muted-foreground/60">
+                      Watermarked PDF
+                    </p>
+                    <div className="mt-2 flex flex-col items-center gap-3 rounded-xl bg-secondary/40 p-6">
+                      <FileText className="size-10 text-muted-foreground/40" />
+                      <p className="text-sm font-light text-muted-foreground">
+                        PDF watermarked with dual-layer metadata + annotation steganography
+                      </p>
+                      <p className="text-xs font-light text-muted-foreground/50">
+                        Download below to get the watermarked file
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Video notice */}
+                {resultDataType === "video" && (
+                  <div className="border-b border-border/30 px-8 py-5">
+                    <p className="text-[10px] font-normal uppercase tracking-[0.15em] text-muted-foreground/60">
+                      Watermarked Video
+                    </p>
+                    <div className="mt-2 flex justify-center rounded-xl bg-secondary/40 p-4">
+                      <video
+                        controls
+                        src={`data:video/avi;base64,${result.watermarked_data}`}
+                        className="max-h-64 w-full rounded-lg"
                       />
                     </div>
                   </div>

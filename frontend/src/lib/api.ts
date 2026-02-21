@@ -10,7 +10,7 @@ const API_BASE =
 
 // ── Request / Response types ────────────────────────────────────────
 
-export type DataType = "text" | "image" | "audio";
+export type DataType = "text" | "image" | "audio" | "pdf" | "video";
 
 export interface WatermarkRequest {
   data_type: DataType;
@@ -134,6 +134,8 @@ export function fileToBase64(file: File): Promise<string> {
  * Detect the data type from a file's MIME type.
  */
 export function detectDataType(file: File): DataType {
+  if (file.type === "application/pdf" || file.name.endsWith(".pdf")) return "pdf";
+  if (file.type.startsWith("video/") || /\.(mp4|avi|mkv|mov|webm)$/i.test(file.name)) return "video";
   if (file.type.startsWith("image/")) return "image";
   if (file.type.startsWith("audio/")) return "audio";
   return "text";

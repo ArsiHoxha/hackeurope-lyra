@@ -38,6 +38,8 @@ from watermarking.crypto_utils import (
 from watermarking.text_watermark  import embed_text_watermark,  verify_text_watermark
 from watermarking.image_watermark import embed_image_watermark, verify_image_watermark
 from watermarking.audio_watermark import embed_audio_watermark, verify_audio_watermark
+from watermarking.pdf_watermark   import embed_pdf_watermark,   verify_pdf_watermark
+from watermarking.video_watermark import embed_video_watermark, verify_video_watermark
 from watermarking.payload import build_payload, derive_wm_id
 
 
@@ -55,7 +57,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -63,7 +65,7 @@ app.add_middleware(
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class WatermarkRequest(BaseModel):
-    data_type:          Literal["text", "image", "audio"]
+    data_type:          Literal["text", "image", "audio", "pdf", "video"]
     data:               str   = Field(..., description="UTF-8 text or base64-encoded binary")
     watermark_strength: float = Field(default=0.8, ge=0.0, le=1.0)
     model_name:         Optional[str] = Field(default=None,
@@ -71,7 +73,7 @@ class WatermarkRequest(BaseModel):
 
 
 class VerifyRequest(BaseModel):
-    data_type:  Literal["text", "image", "audio"]
+    data_type:  Literal["text", "image", "audio", "pdf", "video"]
     data:       str = Field(..., description="UTF-8 text or base64-encoded binary")
     model_name: Optional[str] = Field(default=None, description="Optional hint (not required)")
 
@@ -114,6 +116,22 @@ def _dispatch_embed(req: WatermarkRequest, key: bytes, timestamp: str):
         raw    = base64.b64decode(wm_data)
         method = "fft_lsb_dual_layer"
 
+    elif req.data_type == "pdf":
+        wm_data, meta = embed_pdf_watermark(
+            req.data, key,
+            model_name=req.model_name, timestamp=timestamp,
+        )
+        raw    = base64.b64decode(wm_data)
+        method = "pdf_metadata_zw_dual_layer"
+
+    elif req.data_type == "video":
+        wm_data, meta = embed_video_watermark(
+            req.data, key, alpha=s * 4.0,
+            model_name=req.model_name, timestamp=timestamp,
+        )
+        raw    = base64.b64decode(wm_data)
+        method = "dct_qim_dual_layer"
+
     else:
         raise ValueError(f"Unsupported data_type: {req.data_type}")
 
@@ -134,6 +152,16 @@ def _dispatch_verify(req: VerifyRequest, key: bytes):
 
     elif req.data_type == "audio":
         result = verify_audio_watermark(req.data, key)
+        raw    = base64.b64decode(req.data)
+        score  = result.get("correlation", 0.0)
+
+    elif req.data_type == "pdf":
+        result = verify_pdf_watermark(req.data, key)
+        raw    = base64.b64decode(req.data)
+        score  = result.get("confidence", 0.0)
+
+    elif req.data_type == "video":
+        result = verify_video_watermark(req.data, key)
         raw    = base64.b64decode(req.data)
         score  = result.get("correlation", 0.0)
 

@@ -6,31 +6,20 @@ import { ArrowRight, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import FaultyTerminal from "@/components/FaultyTerminal";
-
+import LetterGlitch from "./LetterGlitch";
 export function HeroSection() {
   return (
     <section className="relative min-h-[90vh] overflow-hidden">
       {/* FaultyTerminal as full background */}
       <div className="absolute inset-0 z-0">
-        <FaultyTerminal
-          scale={1.5}
-          gridMul={[2, 1]}
-          digitSize={1.2}
-          timeScale={0.5}
-          pause={false}
-          scanlineIntensity={0.5}
-          glitchAmount={1}
-          flickerAmount={1}
-          noiseAmp={1}
-          chromaticAberration={0}
-          dither={0}
-          curvature={0.1}
-          tint="#A7EF9E"
-          mouseReact
-          mouseStrength={0.5}
-          pageLoadAnimation
-          brightness={0.6}
-        />
+         
+<LetterGlitch
+  glitchSpeed={50}
+  centerVignette={true}
+  outerVignette={false}
+  smooth={true}
+/>
+
       </div>
 
       {/* Dark overlay for text readability */}
