@@ -24,49 +24,29 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  verifyContent,
+  fileToBase64,
+  detectDataType,
+  type VerifyResponse,
+} from "@/lib/api";
 
-// Simulated verification results for the demo
-function simulateVerification(): VerificationResult {
-  const found = Math.random() > 0.3;
-  const confidence = found
-    ? Math.floor(85 + Math.random() * 15)
-    : Math.floor(5 + Math.random() * 25);
-
-  const models = ["GPT-4o", "Claude 3.5", "Gemini Pro", "Llama 3", "Mistral Large"];
-  const modelOrigin = models[Math.floor(Math.random() * models.length)];
-
-  const now = new Date();
-  const timestamp = now.toISOString().replace("T", " ").slice(0, 19) + " UTC";
-
-  const chars = "0123456789abcdef";
-  let hash = "";
-  for (let i = 0; i < 64; i++) {
-    hash += chars[Math.floor(Math.random() * chars.length)];
-  }
+function mapApiResponse(res: VerifyResponse): VerificationResult {
+  const vr = res.verification_result;
+  const fd = res.forensic_details;
+  const confPct = Math.round(vr.confidence_score * 100);
 
   return {
-    found,
-    confidence,
-    modelOrigin,
-    timestamp,
-    hash,
+    found: vr.watermark_detected,
+    confidence: confPct,
+    modelOrigin: vr.model_name ?? "Unknown",
+    timestamp: res.analysis_timestamp.replace("T", " ").slice(0, 19) + " UTC",
+    hash: vr.matched_watermark_id ?? "\u2014",
     details: [
-      {
-        label: "Token Distribution Anomaly",
-        value: found ? Math.floor(75 + Math.random() * 25) : Math.floor(10 + Math.random() * 30),
-      },
-      {
-        label: "Frequency Domain Signal",
-        value: found ? Math.floor(80 + Math.random() * 20) : Math.floor(5 + Math.random() * 20),
-      },
-      {
-        label: "Statistical Fingerprint Match",
-        value: found ? Math.floor(70 + Math.random() * 30) : Math.floor(8 + Math.random() * 25),
-      },
-      {
-        label: "Entropy Pattern Correlation",
-        value: found ? Math.floor(65 + Math.random() * 35) : Math.floor(3 + Math.random() * 15),
-      },
+      { label: "Confidence Score", value: confPct },
+      { label: "Statistical Score", value: Math.min(100, Math.round(Math.abs(fd.statistical_score) * 10)) },
+      { label: "Signature Valid", value: fd.signature_valid ? 100 : 0 },
+      { label: "Tamper Detection", value: fd.tamper_detected ? 100 : 0 },
     ],
   };
 }
@@ -85,24 +65,56 @@ export default function DemoPage() {
   );
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
-  const handleVerify = async (content: string, type: "text" | "file") => {
+  const handleVerify = async (content: string, type: "text" | "file", file?: File) => {
     setIsLoading(true);
     setCurrentResult(null);
 
-    // Simulate API delay
-    await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1500));
+    try {
+      let result: VerificationResult;
 
-    const result = simulateVerification();
-    setCurrentResult(result);
-    setIsLoading(false);
+      if (type === "text") {
+        const res = await verifyContent({
+          data_type: "text",
+          data: content,
+        });
+        result = mapApiResponse(res);
+      } else if (file) {
+        const dataType = detectDataType(file);
+        let data: string;
+        if (dataType === "text") {
+          data = await file.text();
+        } else {
+          data = await fileToBase64(file);
+        }
+        const res = await verifyContent({ data_type: dataType, data });
+        result = mapApiResponse(res);
+      } else {
+        throw new Error("No file provided");
+      }
 
-    const entry: HistoryEntry = {
-      id: Date.now().toString(),
-      content: content.slice(0, 100) + (content.length > 100 ? "..." : ""),
-      type,
-      result,
-    };
-    setHistory((prev) => [entry, ...prev]);
+      setCurrentResult(result);
+
+      const entry: HistoryEntry = {
+        id: Date.now().toString(),
+        content: content.slice(0, 100) + (content.length > 100 ? "..." : ""),
+        type,
+        result,
+      };
+      setHistory((prev) => [entry, ...prev]);
+    } catch (err) {
+      // On error, show a "not found" result with the error message
+      const errMsg = err instanceof Error ? err.message : "Verification failed";
+      setCurrentResult({
+        found: false,
+        confidence: 0,
+        modelOrigin: "Error",
+        timestamp: new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC",
+        hash: errMsg,
+        details: [],
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const clearHistory = () => {
@@ -125,7 +137,7 @@ export default function DemoPage() {
           </h1>
           <p className="mt-2 text-muted-foreground">
             Submit AI-generated content to check for embedded cryptographic
-            watermarks. Results are simulated for this demo.
+            watermarks. Results are verified against the backend API.
           </p>
         </motion.div>
 

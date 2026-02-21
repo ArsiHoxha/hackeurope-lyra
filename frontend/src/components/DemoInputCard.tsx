@@ -16,7 +16,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface DemoInputCardProps {
-  onVerify: (content: string, type: "text" | "file") => void;
+  onVerify: (content: string, type: "text" | "file", file?: File) => void;
   isLoading: boolean;
 }
 
@@ -110,7 +110,7 @@ export function DemoInputCard({ onVerify, isLoading }: DemoInputCardProps) {
                     type="file"
                     className="hidden"
                     onChange={handleFileChange}
-                    accept=".txt,.py,.js,.ts,.jsx,.tsx,.md,.json,.png,.jpg,.jpeg,.webp"
+                    accept=".txt,.py,.js,.ts,.jsx,.tsx,.md,.json,.png,.jpg,.jpeg,.webp,.wav"
                   />
                 </div>
                 {file && (
@@ -134,7 +134,7 @@ export function DemoInputCard({ onVerify, isLoading }: DemoInputCardProps) {
               </div>
               <div className="flex justify-end">
                 <Button
-                  onClick={() => onVerify(file?.name || "", "file")}
+                  onClick={() => onVerify(file?.name || "", "file", file ?? undefined)}
                   disabled={!file || isLoading}
                   className="gap-2"
                 >

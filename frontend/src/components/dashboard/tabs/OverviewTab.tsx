@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Activity } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { checkHealth } from "@/lib/api";
 
 const stats: { label: string; value: string; change: string; trend: "up" | "down" | "neutral" }[] = [
   { label: "Total Verifications", value: "1,284", change: "+12.3%", trend: "up" },
@@ -26,6 +29,14 @@ const breakdown = [
 ];
 
 export function OverviewTab() {
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+
+  useEffect(() => {
+    checkHealth()
+      .then(() => setBackendStatus("online"))
+      .catch(() => setBackendStatus("offline"));
+  }, []);
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -34,11 +45,32 @@ export function OverviewTab() {
       className="space-y-10"
     >
       {/* Header */}
-      <div>
-        <h2 className="text-2xl font-light tracking-tight">Welcome back, Alex</h2>
-        <p className="mt-1 text-sm font-light text-muted-foreground">
-          Here&apos;s a summary of your watermark verification activity.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-light tracking-tight">Welcome back</h2>
+          <p className="mt-1 text-sm font-light text-muted-foreground">
+            Here&apos;s a summary of your watermark verification activity.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {backendStatus === "checking" ? (
+            <Activity className="size-3.5 animate-pulse text-muted-foreground" />
+          ) : backendStatus === "online" ? (
+            <Wifi className="size-3.5 text-emerald-500" />
+          ) : (
+            <WifiOff className="size-3.5 text-destructive" />
+          )}
+          <Badge
+            variant={backendStatus === "online" ? "default" : "secondary"}
+            className="text-[10px] font-normal"
+          >
+            {backendStatus === "checking"
+              ? "Connecting…"
+              : backendStatus === "online"
+                ? "API Online"
+                : "API Offline"}
+          </Badge>
+        </div>
       </div>
 
       {/* Stats — single card with dividers, like Apple's spec grid */}

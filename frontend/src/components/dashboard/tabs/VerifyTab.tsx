@@ -11,10 +11,18 @@ import {
   Download,
   Check,
   ArrowRight,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import {
+  verifyContent,
+  fileToBase64,
+  detectDataType,
+  type VerifyResponse,
+} from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────
 export interface VerificationResult {
@@ -23,34 +31,32 @@ export interface VerificationResult {
   modelOrigin: string;
   timestamp: string;
   hash: string;
+  tamperDetected: boolean;
+  signatureValid: boolean;
+  statisticalScore: number;
   details: { label: string; value: number }[];
 }
 
-// ── Simulation ────────────────────────────────────────────────────
-function simulate(): VerificationResult {
-  const found = Math.random() > 0.3;
-  const conf = found
-    ? Math.floor(85 + Math.random() * 15)
-    : Math.floor(5 + Math.random() * 25);
-  const models = ["GPT-4o", "Claude 3.5", "Gemini Pro", "Llama 3", "Mistral Large"];
-  const model = models[Math.floor(Math.random() * models.length)];
-  const now = new Date();
-  const ts = now.toISOString().replace("T", " ").slice(0, 19) + " UTC";
-  const hex = "0123456789abcdef";
-  let hash = "";
-  for (let i = 0; i < 64; i++) hash += hex[Math.floor(Math.random() * 16)];
+// ── Map API response → UI model ──────────────────────────────────
+function mapResponse(res: VerifyResponse): VerificationResult {
+  const vr = res.verification_result;
+  const fd = res.forensic_details;
+  const confPct = Math.round(vr.confidence_score * 100);
 
   return {
-    found,
-    confidence: conf,
-    modelOrigin: model,
-    timestamp: ts,
-    hash,
+    found: vr.watermark_detected,
+    confidence: confPct,
+    modelOrigin: vr.model_name ?? "Unknown",
+    timestamp: res.analysis_timestamp.replace("T", " ").slice(0, 19) + " UTC",
+    hash: vr.matched_watermark_id ?? "—",
+    tamperDetected: fd.tamper_detected,
+    signatureValid: fd.signature_valid,
+    statisticalScore: fd.statistical_score,
     details: [
-      { label: "Token Distribution", value: found ? Math.floor(75 + Math.random() * 25) : Math.floor(10 + Math.random() * 30) },
-      { label: "Frequency Signal", value: found ? Math.floor(80 + Math.random() * 20) : Math.floor(5 + Math.random() * 20) },
-      { label: "Fingerprint Match", value: found ? Math.floor(70 + Math.random() * 30) : Math.floor(8 + Math.random() * 25) },
-      { label: "Entropy Correlation", value: found ? Math.floor(65 + Math.random() * 35) : Math.floor(3 + Math.random() * 15) },
+      { label: "Confidence Score", value: confPct },
+      { label: "Statistical Score", value: Math.min(100, Math.round(Math.abs(fd.statistical_score) * 10)) },
+      { label: "Signature Valid", value: fd.signature_valid ? 100 : 0 },
+      { label: "Tamper Detection", value: fd.tamper_detected ? 100 : 0 },
     ],
   };
 }
@@ -63,22 +69,54 @@ export function VerifyTab() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const verify = useCallback(async () => {
     setLoading(true);
     setResult(null);
-    await new Promise((r) => setTimeout(r, 1200 + Math.random() * 1200));
-    setResult(simulate());
-    setLoading(false);
-  }, []);
+    setError(null);
+
+    try {
+      if (inputMode === "text") {
+        const res = await verifyContent({
+          data_type: "text",
+          data: text,
+        });
+        setResult(mapResponse(res));
+      } else if (file) {
+        const dataType = detectDataType(file);
+
+        let data: string;
+        if (dataType === "text") {
+          data = await file.text();
+        } else {
+          data = await fileToBase64(file);
+        }
+
+        const res = await verifyContent({
+          data_type: dataType,
+          data,
+        });
+        setResult(mapResponse(res));
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Verification failed — is the backend running?"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [inputMode, text, file]);
 
   const canVerify = inputMode === "text" ? text.trim().length > 0 : !!file;
 
   const copyReport = () => {
     if (!result) return;
     navigator.clipboard.writeText(
-      `Watermark ${result.found ? "Found" : "Not Found"}\nConfidence: ${result.confidence}%\nModel: ${result.modelOrigin}\nHash: sha256:${result.hash}`
+      `Watermark ${result.found ? "Found" : "Not Found"}\nConfidence: ${result.confidence}%\nModel: ${result.modelOrigin}\nSignature Valid: ${result.signatureValid}\nTamper Detected: ${result.tamperDetected}\nWatermark ID: ${result.hash}`
     );
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -172,14 +210,14 @@ export function VerifyTab() {
                 <Upload className="mb-3 size-5 text-muted-foreground/40" />
                 <p className="text-sm font-light">Click to upload or drag & drop</p>
                 <p className="mt-1 text-xs font-light text-muted-foreground/40">
-                  Text, code, images — up to 10 MB
+                  Text, code, images, audio — up to 10 MB
                 </p>
                 <input
                   ref={fileRef}
                   type="file"
                   className="hidden"
                   onChange={(e) => { if (e.target.files?.[0]) setFile(e.target.files[0]); }}
-                  accept=".txt,.py,.js,.ts,.jsx,.tsx,.md,.json,.png,.jpg,.jpeg,.webp"
+                  accept=".txt,.py,.js,.ts,.jsx,.tsx,.md,.json,.png,.jpg,.jpeg,.webp,.wav"
                 />
               </div>
               {file && (
@@ -288,6 +326,18 @@ export function VerifyTab() {
                       Watermark {result.found ? "detected" : "not found"}
                     </span>
                   </div>
+                  {/* Forensic badges */}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge variant={result.signatureValid ? "default" : "secondary"} className="text-[10px] font-normal">
+                      {result.signatureValid ? "Signature Valid" : "Signature Invalid"}
+                    </Badge>
+                    {result.tamperDetected && (
+                      <Badge variant="destructive" className="gap-1 text-[10px] font-normal">
+                        <AlertTriangle className="size-3" />
+                        Tamper Detected
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 {/* Metadata grid */}
@@ -308,7 +358,7 @@ export function VerifyTab() {
                 {/* Hash */}
                 <div className="border-t border-border/30 px-8 py-5">
                   <p className="text-[10px] font-normal uppercase tracking-[0.15em] text-muted-foreground/60">
-                    SHA-256
+                    SHA-256 Watermark ID
                   </p>
                   <p className="mt-1.5 break-all font-mono text-[11px] font-light leading-relaxed text-muted-foreground">
                     {result.hash}
@@ -373,9 +423,21 @@ export function VerifyTab() {
                 animate={{ opacity: 1 }}
                 className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-border/30 p-8 text-center"
               >
-                <p className="text-sm font-light text-muted-foreground/50">
-                  Submit content to see results
-                </p>
+                {error ? (
+                  <div className="space-y-2">
+                    <AlertTriangle className="mx-auto size-5 text-destructive" />
+                    <p className="text-sm font-light text-destructive">
+                      {error}
+                    </p>
+                    <p className="text-xs font-light text-muted-foreground/50">
+                      Make sure the backend is running on localhost:8000
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-light text-muted-foreground/50">
+                    Submit content to see results
+                  </p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
