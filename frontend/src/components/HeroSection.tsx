@@ -76,14 +76,14 @@ export function HeroSection() {
           transition={{ duration: 0.5, delay: 0.3 }}
           className="pointer-events-auto mt-10 flex flex-wrap items-center justify-center gap-4"
         >
-          <Link href="/demo">
-            <Button size="lg" className="gap-2 text-base">
-              Try Demo
+          <Link href="/dashboard">
+            <Button size="lg" className="gap-2 rounded-xl text-base shadow-lg">
+              Open Dashboard
               <ArrowRight className="size-4" />
             </Button>
           </Link>
           <Link href="/#features">
-            <Button variant="outline" size="lg" className="border-white/40 bg-transparent text-base text-white hover:border-white/60 hover:bg-white/10 hover:text-white">
+            <Button variant="outline" size="lg" className="rounded-xl border-white/40 bg-transparent text-base text-white hover:border-white/60 hover:bg-white/10 hover:text-white">
               Learn More
             </Button>
           </Link>

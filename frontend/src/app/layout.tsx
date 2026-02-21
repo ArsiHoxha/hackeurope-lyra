@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 const inter = Inter({
@@ -8,16 +9,15 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CryptoAI Watermark — Invisible, Forensically Verifiable AI Watermarks",
+  title: "CryptoAI Watermarker — Dashboard",
   description:
-    "Protect your AI models against IP theft, output scraping, and synthetic data contamination with cryptographically verifiable watermarks.",
+    "Cryptographic AI watermarking system demo dashboard. Verify, analyze, and protect AI-generated content.",
   keywords: [
     "AI watermarking",
     "forensic attribution",
     "model protection",
     "cryptographic verification",
     "IP protection",
-    "synthetic data safety",
   ],
 };
 
@@ -28,10 +28,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body
-        className={`${inter.variable} font-sans antialiased`}
-      >
-        {children}
+      <body className={`${inter.variable} font-sans antialiased`}>
+        <TooltipProvider delayDuration={200}>
+          {children}
+        </TooltipProvider>
       </body>
     </html>
   );

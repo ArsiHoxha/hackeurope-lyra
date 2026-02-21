@@ -83,9 +83,9 @@ export function DemoCallout() {
               transition={{ duration: 0.5, delay: 0.5 }}
               className="mt-12 text-center"
             >
-              <Link href="/demo">
-                <Button size="lg" className="gap-2 text-base">
-                  Try Demo Now
+              <Link href="/dashboard">
+                <Button size="lg" className="gap-2 rounded-xl text-base shadow-sm">
+                  Open Dashboard
                   <ArrowRight className="size-4" />
                 </Button>
               </Link>
