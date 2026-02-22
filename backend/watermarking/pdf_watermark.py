@@ -1,22 +1,22 @@
 """
-PDF watermarking — metadata payload + ZW annotation steganography.
+PDF watermarking — three independent redundant layers.
 
-Two independent layers
-----------------------
-Layer 1 – Metadata (primary, lossless):
-  Embed the 30-byte HMAC-signed payload as a hex string in the PDF's
-  custom document metadata field '/WM_PAYLOAD'.
-  Survives any PDF-compliant save/load/linearise cycle without loss.
+Layer 1 – Custom metadata field '/WM_PAYLOAD' (primary):
+  30-byte HMAC-signed payload as hex string.
+  Survives any PDF-compliant save/load/linearise cycle.
 
-Layer 2 – Annotation steganography (secondary):
-  Add a hidden FreeText annotation on page 1 containing the same payload
-  encoded as zero-width Unicode characters (2 bits per char — identical
-  encoding to the text watermarking module).
-  Provides a second extraction path independent of document metadata,
-  surviving metadata-stripping tools.
+Layer 2 – Standard '/Keywords' metadata field (secondary):
+  Same payload encoded as zero-width Unicode characters embedded in the
+  Keywords field.  PDF viewers display ZW chars as empty string; tools that
+  strip custom metadata often preserve standard fields like Keywords.
 
-Verification checks Layer 1 first, falls back to Layer 2 if stripped.
-Both checks are stateless — the PDF and key K are sufficient.
+Layer 3 – Hidden FreeText annotations on EVERY page (tertiary):
+  Invisible (flags=3, 0.01pt white text) FreeText annotation per page,
+  each carrying the ZW-encoded payload.  Annotation-stripping tools
+  would need to remove ALL pages' annotations simultaneously.
+
+Verification checks all three layers; first valid HMAC wins.
+All checks are stateless — only the PDF and key K are needed.
 """
 
 import base64
@@ -91,6 +91,7 @@ def embed_pdf_watermark(
     key:        bytes,
     model_name: Optional[str] = None,
     timestamp:  str = "",
+    context:    Optional[str] = None,
 ) -> Tuple[str, Dict]:
     """
     Embed a self-authenticating watermark into a PDF document.
@@ -113,18 +114,23 @@ def embed_pdf_watermark(
     for page in reader.pages:
         writer.add_page(page)
 
-    payload      = build_payload(model_name, timestamp, key)
+    payload      = build_payload(model_name, timestamp, key, context)
     payload_hex  = payload.hex()
     payload_bits = to_bits(payload)
     zw_text      = _bits_to_zw(payload_bits)
 
-    # Layer 1: custom metadata
+    # Layer 1: custom metadata field
     writer.add_metadata({_META_KEY: payload_hex})
 
-    # Layer 2: hidden annotation on first page
-    if writer.pages:
+    # Layer 2: standard /Keywords field with ZW-encoded payload
+    # Standard fields survive many tools that strip custom /Info entries.
+    writer.add_metadata({"/Keywords": zw_text})
+
+    # Layer 3: hidden annotation on EVERY page
+    # Annotation-stripping tools must remove all pages to erase this layer.
+    for page_num in range(len(writer.pages)):
         annot = _make_hidden_annot(zw_text)
-        writer.add_annotation(page_number=0, annotation=annot)
+        writer.add_annotation(page_number=page_num, annotation=annot)
 
     buf = BytesIO()
     writer.write(buf)
@@ -160,22 +166,25 @@ def verify_pdf_watermark(
     sig_valid  = False
     model_name = None
     ts_unix    = None
+    context_str = None
     wm_id      = None
     source     = None
 
     def _try(raw: bytes) -> bool:
-        nonlocal sig_valid, model_name, ts_unix, wm_id
+        nonlocal sig_valid, model_name, ts_unix, wm_id, context_str
         p = parse_payload(raw, key)
         if p:
             sig_valid  = True
             model_name = p["model_name"]
+            context_str = p.get("context")
             ts_unix    = p["timestamp_unix"]
             wm_id      = derive_wm_id(model_name, ts_unix, key)
             return True
         return False
 
-    # ── Layer 1: metadata ─────────────────────────────────────────────────
-    meta    = reader.metadata or {}
+    meta = reader.metadata or {}
+
+    # ── Layer 1: custom metadata field (/WM_PAYLOAD) ──────────────────────
     hex_val = meta.get(_META_KEY)
     if hex_val:
         try:
@@ -184,7 +193,20 @@ def verify_pdf_watermark(
         except Exception:
             pass
 
-    # ── Layer 2: annotations (fallback if metadata stripped) ──────────────
+    # ── Layer 2: standard /Keywords field ────────────────────────────────
+    if not sig_valid:
+        kw = meta.get("/Keywords", "")
+        if kw:
+            try:
+                bits = _zw_to_bits(str(kw))
+                if len(bits) >= PAYLOAD_BITS:
+                    raw = from_bits(bits[:PAYLOAD_BITS])
+                    if _try(raw):
+                        source = "keywords"
+            except Exception:
+                pass
+
+    # ── Layer 3: annotations on any page ─────────────────────────────────
     if not sig_valid:
         for page in reader.pages:
             if sig_valid:
@@ -213,6 +235,7 @@ def verify_pdf_watermark(
         "confidence":      confidence,
         "signature_valid": sig_valid,
         "model_name":      model_name,
+        "context":         context_str,
         "timestamp_unix":  ts_unix,
         "wm_id":           wm_id,
         "source":          source,

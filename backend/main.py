@@ -38,20 +38,15 @@ from watermarking.crypto_utils import (
 from watermarking.text_watermark  import embed_text_watermark,  verify_text_watermark
 from watermarking.image_watermark import embed_image_watermark, verify_image_watermark
 from watermarking.audio_watermark import embed_audio_watermark, verify_audio_watermark
-from watermarking.pdf_watermark   import embed_pdf_watermark,   verify_pdf_watermark
 from watermarking.video_watermark import embed_video_watermark, verify_video_watermark
+from watermarking.pdf_watermark   import embed_pdf_watermark,   verify_pdf_watermark
 from watermarking.payload import build_payload, derive_wm_id
-from watermarking.security import (
-    get_security_config,
-    update_security_config,
-    generate_api_key,
-    list_api_keys,
-    revoke_api_key,
-    rotate_key,
-    run_security_audit,
-    generate_provenance_certificate,
-    verify_provenance_certificate,
-    generate_scraping_fingerprint,
+from watermarking.registry import (
+    register_watermark,
+    lookup_content,
+    lookup_by_id,
+    get_registry_stats,
+    get_all_entries,
 )
 
 
@@ -69,7 +64,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
 
@@ -77,48 +72,19 @@ app.add_middleware(
 # ── Models ────────────────────────────────────────────────────────────────────
 
 class WatermarkRequest(BaseModel):
-    data_type:          Literal["text", "image", "audio", "pdf", "video"]
+    data_type:          Literal["text", "image", "audio", "video", "pdf"]
     data:               str   = Field(..., description="UTF-8 text or base64-encoded binary")
     watermark_strength: float = Field(default=0.8, ge=0.0, le=1.0)
     model_name:         Optional[str] = Field(default=None,
                                               description="AI model that produced this content")
+    context:            Optional[str] = Field(default=None,
+                                              description="Context or category of data, e.g. Tıp, Hukuk")
 
 
 class VerifyRequest(BaseModel):
-    data_type:  Literal["text", "image", "audio", "pdf", "video"]
+    data_type:  Literal["text", "image", "audio", "video", "pdf"]
     data:       str = Field(..., description="UTF-8 text or base64-encoded binary")
     model_name: Optional[str] = Field(default=None, description="Optional hint (not required)")
-
-
-class SecurityConfigUpdate(BaseModel):
-    entropy_level:            Optional[Literal["standard", "high", "maximum"]] = None
-    rate_limit_enabled:       Optional[bool] = None
-    rate_limit_rpm:           Optional[int]  = None
-    anti_scraping_enabled:    Optional[bool] = None
-    webhook_url:              Optional[str]  = None
-    two_factor_enabled:       Optional[bool] = None
-    provenance_chain_enabled: Optional[bool] = None
-
-
-class GenerateApiKeyRequest(BaseModel):
-    scope:           Literal["read", "write", "admin"] = "read"
-    expires_in_days: int = Field(default=30, ge=1, le=365)
-
-
-class RevokeApiKeyRequest(BaseModel):
-    key_id: str
-
-
-class ProvenanceCertRequest(BaseModel):
-    content:    str
-    data_type:  Literal["text", "image", "audio", "pdf", "video"] = "text"
-    model_name: Optional[str] = None
-
-
-class VerifyProvenanceRequest(BaseModel):
-    content:     str
-    data_type:   Literal["text", "image", "audio", "pdf", "video"] = "text"
-    certificate: dict
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -138,7 +104,7 @@ def _dispatch_embed(req: WatermarkRequest, key: bytes, timestamp: str):
     if req.data_type == "text":
         wm_data, meta = embed_text_watermark(
             req.data, key, strength=s,
-            model_name=req.model_name, timestamp=timestamp,
+            model_name=req.model_name, timestamp=timestamp, context=req.context
         )
         raw    = wm_data.encode("utf-8")
         method = "kgw_statistical_payload_steganography"
@@ -146,7 +112,7 @@ def _dispatch_embed(req: WatermarkRequest, key: bytes, timestamp: str):
     elif req.data_type == "image":
         wm_data, meta = embed_image_watermark(
             req.data, key, alpha=s * 10.0,
-            model_name=req.model_name, timestamp=timestamp,
+            model_name=req.model_name, timestamp=timestamp, context=req.context
         )
         raw    = base64.b64decode(wm_data)
         method = "dct_lsb_dual_layer"
@@ -154,18 +120,10 @@ def _dispatch_embed(req: WatermarkRequest, key: bytes, timestamp: str):
     elif req.data_type == "audio":
         wm_data, meta = embed_audio_watermark(
             req.data, key, alpha=s * 0.01,
-            model_name=req.model_name, timestamp=timestamp,
+            model_name=req.model_name, timestamp=timestamp, context=req.context
         )
         raw    = base64.b64decode(wm_data)
         method = "fft_lsb_dual_layer"
-
-    elif req.data_type == "pdf":
-        wm_data, meta = embed_pdf_watermark(
-            req.data, key,
-            model_name=req.model_name, timestamp=timestamp,
-        )
-        raw    = base64.b64decode(wm_data)
-        method = "pdf_metadata_zw_dual_layer"
 
     elif req.data_type == "video":
         wm_data, meta = embed_video_watermark(
@@ -174,6 +132,14 @@ def _dispatch_embed(req: WatermarkRequest, key: bytes, timestamp: str):
         )
         raw    = base64.b64decode(wm_data)
         method = "dct_qim_dual_layer"
+
+    elif req.data_type == "pdf":
+        wm_data, meta = embed_pdf_watermark(
+            req.data, key,
+            model_name=req.model_name, timestamp=timestamp, context=req.context
+        )
+        raw    = base64.b64decode(wm_data)
+        method = "pdf_metadata_zw_dual_layer"
 
     else:
         raise ValueError(f"Unsupported data_type: {req.data_type}")
@@ -198,15 +164,15 @@ def _dispatch_verify(req: VerifyRequest, key: bytes):
         raw    = base64.b64decode(req.data)
         score  = result.get("correlation", 0.0)
 
-    elif req.data_type == "pdf":
-        result = verify_pdf_watermark(req.data, key)
-        raw    = base64.b64decode(req.data)
-        score  = result.get("confidence", 0.0)
-
     elif req.data_type == "video":
         result = verify_video_watermark(req.data, key)
         raw    = base64.b64decode(req.data)
         score  = result.get("correlation", 0.0)
+
+    elif req.data_type == "pdf":
+        result = verify_pdf_watermark(req.data, key)
+        raw    = base64.b64decode(req.data)
+        score  = 0.9 if result.get("signature_valid") else 0.0
 
     else:
         raise ValueError(f"Unsupported data_type: {req.data_type}")
@@ -239,13 +205,27 @@ async def watermark_endpoint(req: WatermarkRequest):
         fingerprint = compute_fingerprint(wm_bytes)
 
         # Derive WM_ID — same formula used by /api/verify
-        from watermarking.payload import build_payload, derive_wm_id
         import struct, time
         try:
             ts_unix = int(datetime.fromisoformat(timestamp).timestamp()) & 0xFFFF_FFFF
         except Exception:
             ts_unix = int(time.time()) & 0xFFFF_FFFF
         wm_id = derive_wm_id(req.model_name, ts_unix, KEY)
+
+        # Build payload hex for registry
+        payload = build_payload(req.model_name, timestamp, KEY, req.context)
+
+        # ── Persist to server-side registry ────────────────────────────
+        original_bytes = _raw_bytes(req.data_type, req.data)
+        register_watermark(
+            wm_id=wm_id,
+            data_type=req.data_type,
+            original_bytes=original_bytes,
+            watermarked_bytes=wm_bytes,
+            model_name=req.model_name,
+            context=req.context,
+            payload_hex=payload.hex(),
+        )
 
         return {
             "watermarked_data": wm_data,
@@ -255,6 +235,8 @@ async def watermark_endpoint(req: WatermarkRequest):
                 "cryptographic_signature": signature,
                 "fingerprint_hash":        fingerprint,
                 "model_name":              req.model_name,
+                "context":                 req.context,
+                "registry_stored":         True,
             },
             "integrity_proof": {
                 "algorithm": "HMAC-SHA256",
@@ -287,16 +269,67 @@ async def verify_endpoint(req: VerifyRequest):
         stat_result, raw_bytes, stat_score = _dispatch_verify(req, KEY)
 
         # All cryptographic info comes FROM the data itself
-        sig_valid  = stat_result.get("signature_valid", False)
-        model_name = stat_result.get("model_name") or req.model_name
-        ts_unix    = stat_result.get("timestamp_unix")
-        wm_id      = stat_result.get("wm_id")
+        sig_valid   = stat_result.get("signature_valid", False)
+        model_name  = stat_result.get("model_name") or req.model_name
+        ts_unix     = stat_result.get("timestamp_unix")
+        context_str = stat_result.get("context")
+        wm_id       = stat_result.get("wm_id")
 
         watermark_detected = stat_result["detected"]
         confidence         = stat_result["confidence"]
 
+        # ── Registry fallback: if frequency layers failed, check registry ──
+        registry_match = None
+        if not watermark_detected:
+            registry_match = lookup_content(req.data_type, raw_bytes)
+            if registry_match:
+                watermark_detected = True
+                sig_valid          = True
+                model_name         = registry_match.get("model_name") or model_name
+                context_str        = registry_match.get("context") or context_str
+                wm_id              = registry_match.get("wm_id")
+                confidence         = 0.85 if "perceptual" in registry_match.get("match_type", "") else 0.95
+
         # Tamper: statistical signal present but embedded HMAC doesn't verify
         tamper_detected = watermark_detected and not sig_valid
+
+        # Prediction / Insight / Decision logic
+        risk_score = 0
+        risk_level = "Low"
+        decision = "Monitor"
+        insight = "No unauthorized use detected."
+        
+        # Expanded sensitive contexts (20+ categories)
+        SENSITIVE_CONTEXTS = [
+            "medical", "health", "legal", "finance", "tech", 
+            "military", "government", "pii", "hr", "r&d", 
+            "education", "banking", "insurance", "pharma",
+            "clinical", "judicial", "defense", "intelligence", 
+            "tax", "audit", "biometric", "energy", "telecom",
+            "aviation", "automotive", "cyber"
+        ]
+        
+        if watermark_detected:
+            if context_str and context_str.lower() in SENSITIVE_CONTEXTS:
+                risk_score = 85
+                risk_level = "High"
+                insight = f"Sensitive content ({context_str}) from a regulated sector detected. High risk of non-compliance under EU AI Act and GDPR."
+                decision = "Blockchain Evidence Seal & Automated Access Revocation"
+            elif context_str:
+                risk_score = 45
+                risk_level = "Medium"
+                insight = f"Standard content tagged as '{context_str}' detected in unauthorized environment."
+                decision = "Flag for Manual Review & Monitor API Usage"
+            else:
+                risk_score = 30
+                risk_level = "Low"
+                insight = "General AI-generated content detected without specific context tags."
+                decision = "Log Access & Continue Monitoring"
+
+        # Add registry match info to the response
+        source_info = stat_result.get("source", "frequency_domain")
+        if registry_match:
+            source_info = f"registry_{registry_match.get('match_type', 'unknown')}"
 
         return {
             "verification_result": {
@@ -304,11 +337,20 @@ async def verify_endpoint(req: VerifyRequest):
                 "confidence_score":     round(float(confidence), 4),
                 "matched_watermark_id": wm_id,
                 "model_name":           model_name,
+                "context":              context_str,
+                "detection_source":     source_info,
+            },
+            "insight_and_risk": {
+                "predicted_risk_score": risk_score,
+                "predicted_risk_level": risk_level,
+                "insight":              insight,
+                "automated_decision":   decision,
             },
             "forensic_details": {
                 "signature_valid":   sig_valid,
                 "tamper_detected":   tamper_detected,
                 "statistical_score": round(float(stat_score), 6),
+                "registry_match":    registry_match is not None,
             },
             "analysis_timestamp": analysis_timestamp,
         }
@@ -317,94 +359,50 @@ async def verify_endpoint(req: VerifyRequest):
         raise HTTPException(status_code=500, detail=f"Verification failed: {exc}") from exc
 
 
+# ── Registry endpoints ────────────────────────────────────────────────────────
+
+@app.get("/api/registry")
+async def registry_stats():
+    """Get registry statistics."""
+    return get_registry_stats()
+
+
+@app.get("/api/registry/entries")
+async def registry_entries():
+    """Get all registry entries."""
+    return get_all_entries()
+
+
+@app.post("/api/registry/lookup")
+async def registry_lookup(req: VerifyRequest):
+    """Look up content in the registry by hash or perceptual similarity."""
+    raw = _raw_bytes(req.data_type, req.data)
+    result = lookup_content(req.data_type, raw)
+    if result:
+        return {"found": True, "match": result}
+    return {"found": False, "match": None}
+
+
+@app.get("/api/registry/{wm_id}")
+async def registry_lookup_id(wm_id: str):
+    """Look up a specific watermark by ID."""
+    result = lookup_by_id(wm_id)
+    if result:
+        return {"found": True, "match": result}
+    return {"found": False, "match": None}
+
+
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "mode": "stateless", "registry": "none"}
-
-
-# ── Security Endpoints ────────────────────────────────────────────────────────
-
-@app.get("/api/security/config")
-async def security_config_get():
-    """Return the current security configuration."""
-    return get_security_config()
-
-
-@app.post("/api/security/config")
-async def security_config_update(req: SecurityConfigUpdate):
-    """Update security settings."""
-    updates = {k: v for k, v in req.model_dump().items() if v is not None}
-    return update_security_config(updates)
-
-
-@app.post("/api/security/audit")
-async def security_audit():
-    """Run a comprehensive security audit and return scored results."""
-    return run_security_audit()
-
-
-@app.post("/api/security/rotate-key")
-async def security_rotate_key():
-    """Rotate the deployment key (increments epoch)."""
-    return rotate_key()
-
-
-@app.post("/api/security/api-keys/generate")
-async def security_generate_api_key(req: GenerateApiKeyRequest):
-    """Generate a new scoped API key."""
-    return generate_api_key(scope=req.scope, expires_in_days=req.expires_in_days)
-
-
-@app.get("/api/security/api-keys")
-async def security_list_api_keys():
-    """List all API keys (secrets masked)."""
-    return list_api_keys()
-
-
-@app.post("/api/security/api-keys/revoke")
-async def security_revoke_api_key(req: RevokeApiKeyRequest):
-    """Revoke an API key by its ID."""
-    ok = revoke_api_key(req.key_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="API key not found")
-    return {"revoked": True, "key_id": req.key_id}
-
-
-@app.post("/api/security/provenance")
-async def security_provenance_cert(req: ProvenanceCertRequest):
-    """Generate a cryptographic provenance certificate for content."""
-    try:
-        return generate_provenance_certificate(
-            content=req.content,
-            data_type=req.data_type,
-            model_name=req.model_name,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@app.post("/api/security/provenance/verify")
-async def security_provenance_verify(req: VerifyProvenanceRequest):
-    """Verify a provenance certificate against content."""
-    try:
-        return verify_provenance_certificate(
-            content=req.content,
-            data_type=req.data_type,
-            certificate=req.certificate,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-
-@app.post("/api/security/fingerprint")
-async def security_fingerprint(req: ProvenanceCertRequest):
-    """Generate an anti-scraping fingerprint for content."""
-    import hashlib as _hl
-    raw = req.content.encode("utf-8") if req.data_type == "text" else base64.b64decode(req.content)
-    content_hash = _hl.sha256(raw).hexdigest()
-    return generate_scraping_fingerprint(content_hash)
+    stats = get_registry_stats()
+    return {
+        "status": "ok",
+        "mode": "stateless+registry",
+        "registry_entries": stats["total_entries"],
+        "v": "3.0",
+    }
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

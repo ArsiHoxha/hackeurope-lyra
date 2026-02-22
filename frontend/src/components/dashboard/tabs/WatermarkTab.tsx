@@ -43,6 +43,7 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
   const [file, setFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [modelName, setModelName] = useState("GPT-4o");
+  const [context, setContext] = useState("");
   const [strength, setStrength] = useState(0.8);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<WatermarkResponse | null>(null);
@@ -238,6 +239,7 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
           data: text,
           watermark_strength: strength,
           model_name: modelName || null,
+          context: context.trim() || null,
         });
         setResult(res);
         setResultDataType("text");
@@ -246,6 +248,7 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
           dataType: "text",
           label: text.slice(0, 80).replace(/\n/g, " "),
           model: modelName || "Unknown",
+          context: context.trim() || null,
           watermarkId: res.watermark_metadata.watermark_id,
         });
       } else if (inputMode === "audio" && audioBlob) {
@@ -256,6 +259,7 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
           data: wavBase64,
           watermark_strength: strength,
           model_name: modelName || null,
+          context: context.trim() || null,
         });
         setResult(res);
         setResultDataType("audio");
@@ -264,6 +268,7 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
           dataType: "audio",
           label: `Recording (${formatTime(recordingTime)})`,
           model: modelName || "Unknown",
+          context: context.trim() || null,
           watermarkId: res.watermark_metadata.watermark_id,
         });
       } else if (file) {
@@ -279,6 +284,7 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
           data,
           watermark_strength: strength,
           model_name: modelName || null,
+          context: context.trim() || null,
         });
         setResult(res);
         setResultDataType(dataType);
@@ -288,6 +294,7 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
           dataType,
           label: file.name,
           model: modelName || "Unknown",
+          context: context.trim() || null,
           watermarkId: res.watermark_metadata.watermark_id,
         });
       }
@@ -364,11 +371,11 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
       const byteString = atob(result.watermarked_data);
       const arr = new Uint8Array(byteString.length);
       for (let i = 0; i < byteString.length; i++) arr[i] = byteString.charCodeAt(i);
-      const blob = new Blob([arr], { type: "video/mp4" });
+      const blob = new Blob([arr], { type: "video/avi" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `watermarked-${Date.now()}.mp4`;
+      a.download = `watermarked-${Date.now()}.avi`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -442,11 +449,10 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
               <button
                 key={mode}
                 onClick={() => setInputMode(mode)}
-                className={`relative pb-3 text-sm font-light transition-colors ${
-                  inputMode === mode
-                    ? "text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`relative pb-3 text-sm font-light transition-colors ${inputMode === mode
+                  ? "text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 {mode === "text"
                   ? "Text / Code"
@@ -663,6 +669,17 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
             </div>
             <div className="space-y-1.5">
               <Label className="text-[12px] font-light text-muted-foreground">
+                Context / Category
+              </Label>
+              <Input
+                value={context}
+                onChange={(e) => setContext(e.target.value)}
+                placeholder="e.g. medical, legal"
+                className="h-9 rounded-xl border-border/40 bg-card text-sm font-light"
+              />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label className="text-[12px] font-light text-muted-foreground">
                 Strength ({Math.round(strength * 100)}%)
               </Label>
               <input
@@ -855,6 +872,9 @@ export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) 
                         .replace("T", " ")
                         .slice(0, 19),
                     },
+                    ...(result.watermark_metadata.context
+                      ? [{ label: "Context", value: result.watermark_metadata.context }]
+                      : []),
                   ].map((m) => (
                     <div key={m.label} className="bg-card p-5">
                       <p className="text-[10px] font-normal uppercase tracking-[0.15em] text-muted-foreground/60">

@@ -7,12 +7,13 @@ Embed authentication metadata INSIDE the watermarked content so that
 verification needs zero external storage — just the data, its data_type,
 and the secret key K.
 
-Payload layout  (26 bytes = 208 bits)
+Payload layout  (34 bytes = 272 bits)
 --------------------------------------
   [0:2]   magic      b'\x57\x4d'  ("WM")  — identifies our payload format
   [2:6]   timestamp  unix uint32 big-endian
   [6:22]  model_name UTF-8, zero-padded to 16 bytes (truncated if longer)
-  [22:26] auth_tag   HMAC-SHA256(bytes[0:22], K)[:4]  — 32-bit integrity tag
+  [22:30] context    UTF-8, zero-padded to 8 bytes (context of data, e.g. "Tıp")
+  [30:34] auth_tag   HMAC-SHA256(bytes[0:30], K)[:4]  — 32-bit integrity tag
 
 The 32-bit tag is a practical trade-off between payload size and security
 for a hackathon setting.  Production would use the full 256-bit digest.
@@ -35,10 +36,12 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, List
 
 # ── Constants ─────────────────────────────────────────────────────────────────
+# ── Constants ─────────────────────────────────────────────────────────────────
 MAGIC         = b"\x57\x4d"   # "WM"
-_MODEL_LEN    = 20                  # bytes reserved for model_name (up to 20 UTF-8 chars)
-PAYLOAD_BYTES = 2 + 4 + _MODEL_LEN + 4   # magic + ts + model + tag = 30
-PAYLOAD_BITS  = PAYLOAD_BYTES * 8         # 240
+_MODEL_LEN    = 16                  # bytes reserved for model_name
+_CTX_LEN      = 8                   # bytes reserved for context
+PAYLOAD_BYTES = 2 + 4 + _MODEL_LEN + _CTX_LEN + 4   # magic + ts + model + ctx + tag = 34
+PAYLOAD_BITS  = PAYLOAD_BYTES * 8         # 272
 
 # 2-bit → invisible Unicode character
 ZW_ENC: Dict[tuple, str] = {
@@ -59,17 +62,19 @@ def build_payload(
     model_name: Optional[str],
     timestamp: str,
     key: bytes,
+    context: Optional[str] = None
 ) -> bytes:
     """
-    Construct a 26-byte self-authenticating payload.
+    Construct a 34-byte self-authenticating payload.
 
     Fields
     ------
     model_name : AI model identifier (truncated to 16 UTF-8 bytes)
     timestamp  : ISO-8601 UTC string from the watermark request
     key        : HMAC secret
+    context    : Context category e.g. "Tıp", "Hukuk" (truncated to 8 UTF-8 bytes)
 
-    Returns 26 raw bytes ready to be converted to bits and embedded.
+    Returns 34 raw bytes ready to be converted to bits and embedded.
     """
     # Parse timestamp → unix uint32
     try:
@@ -78,18 +83,19 @@ def build_payload(
         ts_int = int(time.time()) & 0xFFFF_FFFF
 
     model_b  = (model_name or "").encode("utf-8")[:_MODEL_LEN].ljust(_MODEL_LEN, b"\x00")
-    pre_auth = MAGIC + struct.pack(">I", ts_int) + model_b           # 2+4+_MODEL_LEN bytes
+    ctx_b    = (context or "").encode("utf-8")[:_CTX_LEN].ljust(_CTX_LEN, b"\x00")
+    pre_auth = MAGIC + struct.pack(">I", ts_int) + model_b + ctx_b           # 2+4+_MODEL_LEN+_CTX_LEN bytes
     tag      = _hmac.new(key, pre_auth, hashlib.sha256).digest()[:4] # 4 bytes
     return pre_auth + tag                                             # PAYLOAD_BYTES total
 
 
 def parse_payload(raw: bytes, key: bytes) -> Optional[Dict]:
     """
-    Authenticate and decode a 26-byte payload.
+    Authenticate and decode a 34-byte payload.
 
     Returns
     -------
-    dict  {'model_name': str|None, 'timestamp_unix': int, 'valid': True}
+    dict  {'model_name': str|None, 'timestamp_unix': int, 'context': str|None, 'valid': True}
           if magic header and HMAC tag are both valid.
     None  if either check fails (corrupted / foreign watermark / wrong key).
     """
@@ -101,7 +107,7 @@ def parse_payload(raw: bytes, key: bytes) -> Optional[Dict]:
     if pl[:2] != MAGIC:
         return None
 
-    _pre_len     = 2 + 4 + _MODEL_LEN          # magic + ts + model
+    _pre_len     = 2 + 4 + _MODEL_LEN + _CTX_LEN         # magic + ts + model + ctx
     pre_auth     = pl[:_pre_len]
     claimed_tag  = pl[_pre_len:_pre_len + 4]
     expected_tag = _hmac.new(key, pre_auth, hashlib.sha256).digest()[:4]
@@ -111,8 +117,9 @@ def parse_payload(raw: bytes, key: bytes) -> Optional[Dict]:
 
     ts_int     = struct.unpack(">I", pl[2:6])[0]
     model_name = pl[6:6 + _MODEL_LEN].rstrip(b"\x00").decode("utf-8", errors="replace") or None
+    context_str = pl[6 + _MODEL_LEN : 6 + _MODEL_LEN + _CTX_LEN].rstrip(b"\x00").decode("utf-8", errors="replace") or None
 
-    return {"model_name": model_name, "timestamp_unix": ts_int, "valid": True}
+    return {"model_name": model_name, "timestamp_unix": ts_int, "context": context_str, "valid": True}
 
 
 # ── Bit conversion helpers ────────────────────────────────────────────────────

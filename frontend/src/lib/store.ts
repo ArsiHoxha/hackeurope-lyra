@@ -16,6 +16,8 @@ export interface HistoryEntry {
   timestamp: string;
   /** Model that produced the content */
   model: string;
+  /** Content category e.g. medical, legal */
+  context?: string | null;
   /** true if watermark was detected (verify) or successfully embedded (watermark) */
   success: boolean;
   /** 0–100 */
@@ -25,6 +27,8 @@ export interface HistoryEntry {
   tamperDetected?: boolean;
   statisticalScore?: number;
   watermarkId?: string;
+  riskScore?: number;
+  riskLevel?: "Low" | "Medium" | "High";
 }
 
 const STORAGE_KEY = "attestify_history";
@@ -83,6 +87,7 @@ export function saveWatermarkResult(opts: {
   dataType: DataType;
   label: string;
   model: string;
+  context?: string | null;
   watermarkId: string;
 }) {
   return addEntry({
@@ -90,6 +95,7 @@ export function saveWatermarkResult(opts: {
     dataType: opts.dataType,
     label: opts.label,
     model: opts.model,
+    context: opts.context,
     success: true,
     confidence: 100,
     watermarkId: opts.watermarkId,
@@ -102,23 +108,29 @@ export function saveVerifyResult(opts: {
   dataType: DataType;
   label: string;
   model: string;
+  context?: string | null;
   found: boolean;
   confidence: number;
   signatureValid: boolean;
   tamperDetected: boolean;
   statisticalScore: number;
   watermarkId: string;
+  riskScore?: number;
+  riskLevel?: "Low" | "Medium" | "High";
 }) {
   return addEntry({
     operation: "verify",
     dataType: opts.dataType,
     label: opts.label,
     model: opts.model,
+    context: opts.context,
     success: opts.found,
     confidence: opts.confidence,
     signatureValid: opts.signatureValid,
     tamperDetected: opts.tamperDetected,
     statisticalScore: opts.statisticalScore,
     watermarkId: opts.watermarkId,
+    riskScore: opts.riskScore,
+    riskLevel: opts.riskLevel,
   });
 }

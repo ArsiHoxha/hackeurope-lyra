@@ -1,0 +1,24 @@
+[
+  {
+    "wm_id": "9ec12c732f226b9424fbd6765b734d35e8756ba47be9c9b1e86f7790b62b31ce",
+    "data_type": "image",
+    "content_hash": "5ceab007cf19725cec7cb1db97aeef24526534d676eb26a7c2e3663f07ea2879",
+    "wm_content_hash": "bb2dee0e8b0dad1b5704ab92c2dcd70ce6f615a449cad22481587f0a1ec917c2",
+    "phash": "69000006bd2ffd66bc0600000000006001fe1ffe3fffbffff8efb8ee9fefdfff",
+    "model_name": "GPT-4o",
+    "context": null,
+    "payload_hex": "574d699a86404750542d346f000000000000000000000000000000000000835b1952",
+    "registered_at": "2026-02-22T04:29:53.978524+00:00"
+  },
+  {
+    "wm_id": "31b19e4b3ee2f3fe148e65ab30ea96cc9b7ffb854fca8e6ba1e28f9c2420ee22",
+    "data_type": "text",
+    "content_hash": "816d11dbb483497fc49e6e53e8ad161af5c575f3ee23d1a09841bce32fa11d73",
+    "wm_content_hash": "f3c402c9eda09c6832c5bf94a2632227fc4f7b6d3d8e4abadbe5838818111cfc",
+    "phash": null,
+    "model_name": "GPT-4o",
+    "context": "medical",
+    "payload_hex": "574d699a87324750542d346f000000000000000000006d65646963616c00df9117af",
+    "registered_at": "2026-02-22T04:33:54.231330+00:00"
+  }
+]

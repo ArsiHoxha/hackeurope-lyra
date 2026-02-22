@@ -17,6 +17,7 @@ export interface WatermarkRequest {
   data: string; // UTF-8 text or base64-encoded binary
   watermark_strength?: number; // 0.0 – 1.0, default 0.8
   model_name?: string | null;
+  context?: string | null; // content category e.g. "medical", "legal"
 }
 
 export interface VerifyRequest {
@@ -33,6 +34,7 @@ export interface WatermarkMetadata {
   cryptographic_signature: string;
   fingerprint_hash: string;
   model_name: string | null;
+  context: string | null;
 }
 
 export interface WatermarkResponse {
@@ -51,6 +53,7 @@ export interface VerificationResult {
   confidence_score: number; // 0 – 1
   matched_watermark_id: string | null;
   model_name: string | null;
+  context: string | null;
 }
 
 export interface ForensicDetails {
@@ -59,9 +62,17 @@ export interface ForensicDetails {
   statistical_score: number;
 }
 
+export interface InsightAndRisk {
+  predicted_risk_score: number;  // 0 – 100
+  predicted_risk_level: "Low" | "Medium" | "High";
+  insight: string;
+  automated_decision: string;
+}
+
 export interface VerifyResponse {
   verification_result: VerificationResult;
   forensic_details: ForensicDetails;
+  insight_and_risk: InsightAndRisk;
   analysis_timestamp: string;
 }
 

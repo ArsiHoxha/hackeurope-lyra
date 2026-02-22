@@ -24,20 +24,20 @@ import { Badge } from "@/components/ui/badge";
 
 // ── Syntax highlighting — Catppuccin Mocha palette ──────────────────
 const syntaxColors: Record<string, string> = {
-  comment:     "text-[#6c7086] italic",
-  keyword:     "text-[#cba6f7]",
-  string:      "text-[#a6e3a1]",
-  number:      "text-[#fab387]",
-  func:        "text-[#89b4fa]",
-  type:        "text-[#f9e2af]",
-  variable:    "text-[#f38ba8]",
-  operator:    "text-[#94e2d5]",
-  property:    "text-[#89b4fa]",
+  comment: "text-[#6c7086] italic",
+  keyword: "text-[#cba6f7]",
+  string: "text-[#a6e3a1]",
+  number: "text-[#fab387]",
+  func: "text-[#89b4fa]",
+  type: "text-[#f9e2af]",
+  variable: "text-[#f38ba8]",
+  operator: "text-[#94e2d5]",
+  property: "text-[#89b4fa]",
   punctuation: "text-[#585b70]",
-  plain:       "text-[#cdd6f4]",
-  builtin:     "text-[#f9e2af]",
-  decorator:   "text-[#fab387]",
-  flag:        "text-[#fab387]",
+  plain: "text-[#cdd6f4]",
+  builtin: "text-[#f9e2af]",
+  decorator: "text-[#fab387]",
+  flag: "text-[#fab387]",
 };
 
 type TokenType = keyof typeof syntaxColors;
@@ -284,11 +284,10 @@ export default function DocsPage() {
                     key={s.id}
                     href={`#${s.id}`}
                     onClick={() => setActiveSection(s.id)}
-                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-light transition-colors ${
-                      active
+                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-light transition-colors ${active
                         ? "bg-secondary text-foreground"
                         : "text-muted-foreground hover:text-foreground"
-                    }`}
+                      }`}
                   >
                     <Icon className="size-3.5" />
                     {s.label}
@@ -420,29 +419,6 @@ export default function DocsPage() {
                     1
                   </div>
                   <span className="text-[14px] font-medium">
-                    Start the API server
-                  </span>
-                </div>
-                <CodeBlock
-                  title="Terminal"
-                  lang="bash"
-                  code={`# Clone and install
-git clone https://github.com/your-org/lyra.git
-cd lyra/backend
-pip install -r requirements.txt
-
-# Set your secret key (CRITICAL — keep this private)
-export WATERMARK_SECRET_KEY="your-secret-key-here"
-
-# Start the server
-uvicorn main:app --host 0.0.0.0 --port 8000`}
-                />
-
-                <div className="flex items-center gap-3">
-                  <div className="flex size-7 items-center justify-center rounded-full bg-foreground text-[12px] font-semibold text-background">
-                    2
-                  </div>
-                  <span className="text-[14px] font-medium">
                     Watermark your first text
                   </span>
                 </div>
@@ -461,7 +437,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000`}
 
                 <div className="flex items-center gap-3">
                   <div className="flex size-7 items-center justify-center rounded-full bg-foreground text-[12px] font-semibold text-background">
-                    3
+                    2
                   </div>
                   <span className="text-[14px] font-medium">
                     Verify it later
@@ -1086,7 +1062,7 @@ curl -s -X POST http://localhost:8000/api/verify \\
               </h2>
               <div className="rounded-xl border border-border/40 bg-card p-6">
                 <pre className="overflow-x-auto font-mono text-[12px] leading-relaxed text-muted-foreground">
-{`┌─────────────────────────────────────────────────────────────┐
+                  {`┌─────────────────────────────────────────────────────────────┐
 │                     Your Application                         │
 │                                                              │
 │  ┌──────────┐     ┌───────────────┐     ┌───────────────┐   │

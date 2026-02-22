@@ -37,11 +37,16 @@ export interface VerificationResult {
   found: boolean;
   confidence: number;
   modelOrigin: string;
+  context: string | null;
   timestamp: string;
   hash: string;
   tamperDetected: boolean;
   signatureValid: boolean;
   statisticalScore: number;
+  riskScore: number;
+  riskLevel: "Low" | "Medium" | "High";
+  insight: string;
+  automatedDecision: string;
   details: { label: string; value: number }[];
 }
 
@@ -49,17 +54,23 @@ export interface VerificationResult {
 function mapResponse(res: VerifyResponse): VerificationResult {
   const vr = res.verification_result;
   const fd = res.forensic_details;
+  const ir = res.insight_and_risk;
   const confPct = Math.round(vr.confidence_score * 100);
 
   return {
     found: vr.watermark_detected,
     confidence: confPct,
     modelOrigin: vr.model_name ?? "Unknown",
+    context: vr.context ?? null,
     timestamp: res.analysis_timestamp.replace("T", " ").slice(0, 19) + " UTC",
     hash: vr.matched_watermark_id ?? "—",
     tamperDetected: fd.tamper_detected,
     signatureValid: fd.signature_valid,
     statisticalScore: fd.statistical_score,
+    riskScore: ir?.predicted_risk_score ?? 0,
+    riskLevel: ir?.predicted_risk_level ?? "Low",
+    insight: ir?.insight ?? "",
+    automatedDecision: ir?.automated_decision ?? "",
     details: [
       { label: "Confidence Score", value: confPct },
       { label: "Statistical Score", value: Math.min(100, Math.round(Math.abs(fd.statistical_score) * 10)) },
@@ -243,12 +254,15 @@ export function VerifyTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
           dataType: "text",
           label: text.slice(0, 80).replace(/\n/g, " "),
           model: mapped.modelOrigin,
+          context: mapped.context,
           found: mapped.found,
           confidence: mapped.confidence,
           signatureValid: mapped.signatureValid,
           tamperDetected: mapped.tamperDetected,
           statisticalScore: mapped.statisticalScore,
           watermarkId: mapped.hash,
+          riskScore: mapped.riskScore,
+          riskLevel: mapped.riskLevel,
         });
       } else if (inputMode === "audio" && audioBlob) {
         const wavBase64 = await blobToWavBase64(audioBlob);
@@ -263,12 +277,15 @@ export function VerifyTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
           dataType: "audio",
           label: `Recording (${formatTime(recordingTime)})`,
           model: mapped.modelOrigin,
+          context: mapped.context,
           found: mapped.found,
           confidence: mapped.confidence,
           signatureValid: mapped.signatureValid,
           tamperDetected: mapped.tamperDetected,
           statisticalScore: mapped.statisticalScore,
           watermarkId: mapped.hash,
+          riskScore: mapped.riskScore,
+          riskLevel: mapped.riskLevel,
         });
       } else if (file) {
         const dataType = detectDataType(file);
@@ -292,12 +309,15 @@ export function VerifyTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
           dataType,
           label: file.name,
           model: mapped.modelOrigin,
+          context: mapped.context,
           found: mapped.found,
           confidence: mapped.confidence,
           signatureValid: mapped.signatureValid,
           tamperDetected: mapped.tamperDetected,
           statisticalScore: mapped.statisticalScore,
           watermarkId: mapped.hash,
+          riskScore: mapped.riskScore,
+          riskLevel: mapped.riskLevel,
         });
       }
     } catch (err) {
@@ -388,9 +408,8 @@ export function VerifyTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
               <button
                 key={mode}
                 onClick={() => setInputMode(mode)}
-                className={`relative pb-3 text-sm font-light transition-colors ${
-                  inputMode === mode ? "text-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
+                className={`relative pb-3 text-sm font-light transition-colors ${inputMode === mode ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                  }`}
               >
                 {mode === "text"
                   ? "Text / Code"
@@ -674,6 +693,11 @@ export function VerifyTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
                     <Badge variant={result.signatureValid ? "default" : "secondary"} className="text-[10px] font-normal">
                       {result.signatureValid ? "Signature Valid" : "Signature Invalid"}
                     </Badge>
+                    {result.context && (
+                      <Badge variant="outline" className="text-[10px] font-normal">
+                        Context: {result.context}
+                      </Badge>
+                    )}
                     {result.tamperDetected && (
                       <Badge variant="destructive" className="gap-1 text-[10px] font-normal">
                         <AlertTriangle className="size-3" />
@@ -734,6 +758,50 @@ export function VerifyTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
                     ))}
                   </div>
                 </div>
+
+                {/* Risk Intelligence block (new) */}
+                {result.found && result.insight && (
+                  <div className="border-t border-border/30 px-8 py-6">
+                    <div className="mb-4 flex items-center justify-between">
+                      <p className="text-[10px] font-normal uppercase tracking-[0.15em] text-muted-foreground/60">
+                        Risk Intelligence
+                      </p>
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${result.riskLevel === "High"
+                          ? "bg-red-500/15 text-red-500"
+                          : result.riskLevel === "Medium"
+                            ? "bg-amber-500/15 text-amber-500"
+                            : "bg-emerald-500/15 text-emerald-500"
+                          }`}
+                      >
+                        {result.riskLevel} Risk · {result.riskScore}
+                      </span>
+                    </div>
+                    {/* Risk progress bar */}
+                    <div className="mb-4">
+                      <div className="h-[3px] overflow-hidden rounded-full bg-secondary">
+                        <motion.div
+                          className={`h-full rounded-full ${result.riskLevel === "High"
+                            ? "bg-red-500"
+                            : result.riskLevel === "Medium"
+                              ? "bg-amber-500"
+                              : "bg-emerald-500"
+                            }`}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${result.riskScore}%` }}
+                          transition={{ duration: 0.7, ease: [0.25, 0.1, 0.25, 1] }}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[12px] font-light leading-relaxed text-muted-foreground">
+                      {result.insight}
+                    </p>
+                    <div className="mt-3 flex items-start gap-2 rounded-xl bg-secondary/40 px-3.5 py-3">
+                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">Decision</span>
+                      <span className="text-[12px] font-light text-foreground">{result.automatedDecision}</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Actions */}
                 <div className="flex gap-3 border-t border-border/30 px-8 py-5">
