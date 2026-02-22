@@ -41,6 +41,18 @@ from watermarking.audio_watermark import embed_audio_watermark, verify_audio_wat
 from watermarking.pdf_watermark   import embed_pdf_watermark,   verify_pdf_watermark
 from watermarking.video_watermark import embed_video_watermark, verify_video_watermark
 from watermarking.payload import build_payload, derive_wm_id
+from watermarking.security import (
+    get_security_config,
+    update_security_config,
+    generate_api_key,
+    list_api_keys,
+    revoke_api_key,
+    rotate_key,
+    run_security_audit,
+    generate_provenance_certificate,
+    verify_provenance_certificate,
+    generate_scraping_fingerprint,
+)
 
 
 # ── Application ───────────────────────────────────────────────────────────────
@@ -76,6 +88,37 @@ class VerifyRequest(BaseModel):
     data_type:  Literal["text", "image", "audio", "pdf", "video"]
     data:       str = Field(..., description="UTF-8 text or base64-encoded binary")
     model_name: Optional[str] = Field(default=None, description="Optional hint (not required)")
+
+
+class SecurityConfigUpdate(BaseModel):
+    entropy_level:            Optional[Literal["standard", "high", "maximum"]] = None
+    rate_limit_enabled:       Optional[bool] = None
+    rate_limit_rpm:           Optional[int]  = None
+    anti_scraping_enabled:    Optional[bool] = None
+    webhook_url:              Optional[str]  = None
+    two_factor_enabled:       Optional[bool] = None
+    provenance_chain_enabled: Optional[bool] = None
+
+
+class GenerateApiKeyRequest(BaseModel):
+    scope:           Literal["read", "write", "admin"] = "read"
+    expires_in_days: int = Field(default=30, ge=1, le=365)
+
+
+class RevokeApiKeyRequest(BaseModel):
+    key_id: str
+
+
+class ProvenanceCertRequest(BaseModel):
+    content:    str
+    data_type:  Literal["text", "image", "audio", "pdf", "video"] = "text"
+    model_name: Optional[str] = None
+
+
+class VerifyProvenanceRequest(BaseModel):
+    content:     str
+    data_type:   Literal["text", "image", "audio", "pdf", "video"] = "text"
+    certificate: dict
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -279,6 +322,89 @@ async def verify_endpoint(req: VerifyRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok", "mode": "stateless", "registry": "none"}
+
+
+# ── Security Endpoints ────────────────────────────────────────────────────────
+
+@app.get("/api/security/config")
+async def security_config_get():
+    """Return the current security configuration."""
+    return get_security_config()
+
+
+@app.post("/api/security/config")
+async def security_config_update(req: SecurityConfigUpdate):
+    """Update security settings."""
+    updates = {k: v for k, v in req.model_dump().items() if v is not None}
+    return update_security_config(updates)
+
+
+@app.post("/api/security/audit")
+async def security_audit():
+    """Run a comprehensive security audit and return scored results."""
+    return run_security_audit()
+
+
+@app.post("/api/security/rotate-key")
+async def security_rotate_key():
+    """Rotate the deployment key (increments epoch)."""
+    return rotate_key()
+
+
+@app.post("/api/security/api-keys/generate")
+async def security_generate_api_key(req: GenerateApiKeyRequest):
+    """Generate a new scoped API key."""
+    return generate_api_key(scope=req.scope, expires_in_days=req.expires_in_days)
+
+
+@app.get("/api/security/api-keys")
+async def security_list_api_keys():
+    """List all API keys (secrets masked)."""
+    return list_api_keys()
+
+
+@app.post("/api/security/api-keys/revoke")
+async def security_revoke_api_key(req: RevokeApiKeyRequest):
+    """Revoke an API key by its ID."""
+    ok = revoke_api_key(req.key_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="API key not found")
+    return {"revoked": True, "key_id": req.key_id}
+
+
+@app.post("/api/security/provenance")
+async def security_provenance_cert(req: ProvenanceCertRequest):
+    """Generate a cryptographic provenance certificate for content."""
+    try:
+        return generate_provenance_certificate(
+            content=req.content,
+            data_type=req.data_type,
+            model_name=req.model_name,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/security/provenance/verify")
+async def security_provenance_verify(req: VerifyProvenanceRequest):
+    """Verify a provenance certificate against content."""
+    try:
+        return verify_provenance_certificate(
+            content=req.content,
+            data_type=req.data_type,
+            certificate=req.certificate,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/security/fingerprint")
+async def security_fingerprint(req: ProvenanceCertRequest):
+    """Generate an anti-scraping fingerprint for content."""
+    import hashlib as _hl
+    raw = req.content.encode("utf-8") if req.data_type == "text" else base64.b64decode(req.content)
+    content_hash = _hl.sha256(raw).hexdigest()
+    return generate_scraping_fingerprint(content_hash)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

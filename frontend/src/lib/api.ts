@@ -140,3 +140,185 @@ export function detectDataType(file: File): DataType {
   if (file.type.startsWith("audio/")) return "audio";
   return "text";
 }
+
+
+// ── Security API ────────────────────────────────────────────────────
+
+export interface SecurityConfig {
+  key_rotation_epoch: number;
+  key_last_rotated: string | null;
+  entropy_level: "standard" | "high" | "maximum";
+  rate_limit_enabled: boolean;
+  rate_limit_rpm: number;
+  anti_scraping_enabled: boolean;
+  audit_last_run: string | null;
+  webhook_url: string | null;
+  two_factor_enabled: boolean;
+  provenance_chain_enabled: boolean;
+  api_key_count: number;
+  total_api_keys: number;
+}
+
+export interface SecurityAuditCheck {
+  id: string;
+  label: string;
+  passed: boolean;
+  severity: "critical" | "high" | "medium" | "low";
+  weight: number;
+  fix_action: string;
+}
+
+export interface SecurityAuditResult {
+  score: number;
+  checks: SecurityAuditCheck[];
+  total: number;
+  passed: number;
+  failed: number;
+  audited_at: string;
+}
+
+export interface ApiKeyInfo {
+  id: string;
+  scope: string;
+  created: string;
+  expires: string;
+  revoked: boolean;
+  prefix: string;
+}
+
+export interface GeneratedApiKey extends ApiKeyInfo {
+  api_key: string;
+  key_id: string;
+}
+
+export interface ProvenanceCertificate {
+  version: string;
+  content_hash: string;
+  content_size_bytes: number;
+  data_type: string;
+  model_name: string;
+  provenance_id: string;
+  origin_proof: string;
+  anti_scrape_fingerprint: string;
+  chain_hash: string;
+  issued_at: string;
+  issuer: string;
+  algorithm: string;
+  key_epoch: number;
+  entropy_level: string;
+  claims: {
+    ip_protection: boolean;
+    anti_scraping: boolean;
+    tamper_evident: boolean;
+    provenance_verified: boolean;
+  };
+}
+
+export interface ProvenanceVerifyResult {
+  valid: boolean;
+  checks: {
+    content_hash: boolean;
+    provenance_id: boolean;
+    origin_proof: boolean;
+    chain_integrity: boolean;
+  };
+  content_hash: string;
+  verified_at: string;
+}
+
+export interface ScrapingFingerprint {
+  fingerprint: string;
+  nonce: string;
+  scraping_alert: boolean;
+  requests_last_minute: number;
+}
+
+export interface KeyRotationResult {
+  epoch: number;
+  rotated_at: string;
+  message: string;
+}
+
+/** Get current security configuration. */
+export async function getSecurityConfig(): Promise<SecurityConfig> {
+  const res = await fetch(`${API_BASE}/api/security/config`);
+  if (!res.ok) throw new Error("Failed to fetch security config");
+  return res.json();
+}
+
+/** Update security settings. */
+export async function updateSecurityConfig(
+  updates: Partial<SecurityConfig>
+): Promise<SecurityConfig> {
+  return post<SecurityConfig>("/api/security/config", updates);
+}
+
+/** Run security audit. */
+export async function runSecurityAudit(): Promise<SecurityAuditResult> {
+  return post<SecurityAuditResult>("/api/security/audit", {});
+}
+
+/** Rotate deployment key. */
+export async function rotateKey(): Promise<KeyRotationResult> {
+  return post<KeyRotationResult>("/api/security/rotate-key", {});
+}
+
+/** Generate a scoped API key. */
+export async function generateApiKey(
+  scope: "read" | "write" | "admin" = "read",
+  expiresInDays: number = 30
+): Promise<GeneratedApiKey> {
+  return post<GeneratedApiKey>("/api/security/api-keys/generate", {
+    scope,
+    expires_in_days: expiresInDays,
+  });
+}
+
+/** List all API keys (masked). */
+export async function listApiKeys(): Promise<ApiKeyInfo[]> {
+  const res = await fetch(`${API_BASE}/api/security/api-keys`);
+  if (!res.ok) throw new Error("Failed to list API keys");
+  return res.json();
+}
+
+/** Revoke an API key. */
+export async function revokeApiKey(keyId: string): Promise<void> {
+  await post("/api/security/api-keys/revoke", { key_id: keyId });
+}
+
+/** Generate a provenance certificate. */
+export async function generateProvenance(
+  content: string,
+  dataType: DataType = "text",
+  modelName?: string
+): Promise<ProvenanceCertificate> {
+  return post<ProvenanceCertificate>("/api/security/provenance", {
+    content,
+    data_type: dataType,
+    model_name: modelName,
+  });
+}
+
+/** Verify a provenance certificate. */
+export async function verifyProvenance(
+  content: string,
+  dataType: DataType,
+  certificate: ProvenanceCertificate
+): Promise<ProvenanceVerifyResult> {
+  return post<ProvenanceVerifyResult>("/api/security/provenance/verify", {
+    content,
+    data_type: dataType,
+    certificate,
+  });
+}
+
+/** Generate anti-scraping fingerprint. */
+export async function generateFingerprint(
+  content: string,
+  dataType: DataType = "text"
+): Promise<ScrapingFingerprint> {
+  return post<ScrapingFingerprint>("/api/security/fingerprint", {
+    content,
+    data_type: dataType,
+  });
+}
