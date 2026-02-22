@@ -10,20 +10,10 @@ import {
   X,
   Sun,
   Moon,
-  User,
-  Settings,
-  LogOut,
   Bell,
 } from "lucide-react";
+import { UserButton } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -157,37 +147,14 @@ export function DashboardNavbar() {
             <TooltipContent>{dark ? "Light mode" : "Dark mode"}</TooltipContent>
           </Tooltip>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8">
-                <Avatar className="size-7">
-                  <AvatarFallback className="bg-primary/10 text-[11px] font-medium text-primary">
-                    AC
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <div className="px-2 py-1.5">
-                <p className="text-sm font-medium">Alex Chen</p>
-                <p className="text-xs text-muted-foreground">alex@attestify.io</p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>
-                <User className="mr-2 size-4" />
-                Profile
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 size-4" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-destructive">
-                <LogOut className="mr-2 size-4" />
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <UserButton
+            afterSignOutUrl="/"
+            appearance={{
+              elements: {
+                avatarBox: "size-8",
+              },
+            }}
+          />
         </div>
       </div>
 
