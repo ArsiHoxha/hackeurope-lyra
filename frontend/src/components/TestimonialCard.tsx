@@ -11,7 +11,7 @@ const testimonials = [
     role: "Head of AI Security, TechGuard",
     initials: "SC",
     quote:
-      "CryptoAI Watermark has been instrumental in protecting our proprietary models. The forensic verification is unmatched.",
+      "Attestify  has been instrumental in protecting our proprietary models. The forensic verification is unmatched.",
     rating: 5,
   },
   {

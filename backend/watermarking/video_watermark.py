@@ -289,12 +289,10 @@ def verify_video_watermark(
             Y     = ycrcb[:, :, 0].astype(np.float64)
             corrs.append(_dct_correlation(Y, key))
     rho = float(np.mean(corrs)) if corrs else 0.0
-
-    # ── Layer 2: QIM majority vote ────────────────────────────────────────
     kf_indices = _key_frame_indices(len(frames))
     all_bits   = []
     for idx in kf_indices:
-        ycrcb = cv2.cvtColor(frames[idx], cv2.COLOR_BGR2YCrCb)
+        ycrcb = cv2.cvtColor(frames[idx], cv2.COLOR────────────────────────────────────────_BGR2YCrCb)
         Y     = ycrcb[:, :, 0].astype(np.float64)
         all_bits.append(_extract_qim(Y, key))
 

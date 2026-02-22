@@ -48,7 +48,7 @@ export function VerificationResultCard({
   const shareResult = () => {
     if (navigator.share) {
       navigator.share({
-        title: "CryptoAI Watermark Verification",
+        title: "Attestify Watermark Verification",
         text: `Watermark ${result.found ? "Found" : "Not Found"} — Confidence: ${result.confidence}%`,
       });
     }
