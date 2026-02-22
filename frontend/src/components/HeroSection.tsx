@@ -12,13 +12,15 @@ export function HeroSection() {
     <section className="relative min-h-[90vh] overflow-hidden">
       {/* FaultyTerminal as full background */}
       <div className="absolute inset-0 z-0">
-         
-<LetterGlitch
-  glitchSpeed={50}
-  centerVignette={true}
-  outerVignette={false}
-  smooth={true}
-/>
+
+        <LetterGlitch
+          glitchSpeed={50}
+          centerVignette={true}
+          outerVignette={false}
+          smooth={true}
+          glitchColors={["#2563eb", "#7c3aed", "#0f172a"]}
+          characters="アイウエオカキクケコサシスセソタチツテトナニヌネノABCDEF0123456789"
+        />
 
       </div>
 

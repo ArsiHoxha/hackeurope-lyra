@@ -285,8 +285,8 @@ export default function DocsPage() {
                     href={`#${s.id}`}
                     onClick={() => setActiveSection(s.id)}
                     className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] font-light transition-colors ${active
-                        ? "bg-secondary text-foreground"
-                        : "text-muted-foreground hover:text-foreground"
+                      ? "bg-secondary text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                       }`}
                   >
                     <Icon className="size-3.5" />
@@ -425,7 +425,7 @@ export default function DocsPage() {
                 <CodeBlock
                   title="cURL — Embed watermark"
                   lang="bash"
-                  code={`curl -X POST http://localhost:8000/api/watermark \\
+                  code={`curl -X POST https://hackeurope-lyra.onrender.com/api/watermark \\
   -H "Content-Type: application/json" \\
   -d '{
     "data_type": "text",
@@ -446,11 +446,11 @@ export default function DocsPage() {
                 <CodeBlock
                   title="cURL — Verify watermark"
                   lang="bash"
-                  code={`curl -X POST http://localhost:8000/api/verify \\
+                  code={`curl -X POST https://hackeurope-lyra.onrender.com/api/verify \\
   -H "Content-Type: application/json" \\
   -d '{
     "data_type": "text",
-    "data": "<paste the watermarked_data from step 2>"
+    "data": "<paste the watermarked_data from step 1>"
   }'`}
                 />
               </div>
@@ -703,7 +703,7 @@ python3 -c "import secrets; print(secrets.token_hex(32))"`}
                 code={`import openai
 import httpx
 
-LYRA_URL = "https://lyra.yourcompany.com"
+LYRA_URL = "https://hackeurope-lyra.onrender.com"
 
 client = openai.OpenAI()
 
@@ -744,7 +744,7 @@ print(response["watermark_id"])  # ← you store this for audit`}
                 lang="typescript"
                 code={`import OpenAI from "openai";
 
-const LYRA_URL = "https://lyra.yourcompany.com";
+const LYRA_URL = "https://hackeurope-lyra.onrender.com";
 const openai = new OpenAI();
 
 // Middleware: watermark every AI response before sending
@@ -818,7 +818,7 @@ import httpx
 import base64
 
 client = openai.OpenAI()
-LYRA_URL = "https://lyra.yourcompany.com"
+LYRA_URL = "https://hackeurope-lyra.onrender.com"
 
 def generate_watermarked_image(prompt: str) -> bytes:
     """Generate image with DALL·E, watermark it, return PNG bytes."""
@@ -890,7 +890,7 @@ import httpx
 import base64
 
 client = openai.OpenAI()
-LYRA_URL = "https://lyra.yourcompany.com"
+LYRA_URL = "https://hackeurope-lyra.onrender.com"
 
 def generate_watermarked_audio(text: str) -> bytes:
     """Generate TTS audio, watermark it, return WAV bytes."""
@@ -951,7 +951,7 @@ with open("speech.wav", "wb") as f:
                 lang="python"
                 code={`import requests
 
-LYRA = "https://lyra.yourcompany.com"
+LYRA = "https://hackeurope-lyra.onrender.com"
 
 # Embed
 resp = requests.post(f"{LYRA}/api/watermark", json={
@@ -972,7 +972,7 @@ print(resp.json()["verification_result"]["watermark_detected"])  # True`}
               <CodeBlock
                 title="JavaScript / TypeScript (fetch)"
                 lang="typescript"
-                code={`const LYRA = "https://lyra.yourcompany.com";
+                code={`const LYRA = "https://hackeurope-lyra.onrender.com";
 
 // Embed
 const embedRes = await fetch(\`\${LYRA}/api/watermark\`, {
@@ -1011,7 +1011,7 @@ import (
     "net/http"
 )
 
-const lyraURL = "https://lyra.yourcompany.com"
+const lyraURL = "https://hackeurope-lyra.onrender.com"
 
 func watermark(text, model string) (string, error) {
     body, _ := json.Marshal(map[string]interface{}{
@@ -1042,13 +1042,13 @@ func main() {
                 title="cURL — Full round-trip"
                 lang="bash"
                 code={`# 1. Embed watermark
-WATERMARKED=$(curl -s -X POST http://localhost:8000/api/watermark \\
+WATERMARKED=$(curl -s -X POST https://hackeurope-lyra.onrender.com/api/watermark \\
   -H "Content-Type: application/json" \\
   -d '{"data_type":"text","data":"Hello world","model_name":"GPT-4o"}' \\
   | jq -r '.watermarked_data')
 
 # 2. Verify watermark
-curl -s -X POST http://localhost:8000/api/verify \\
+curl -s -X POST https://hackeurope-lyra.onrender.com/api/verify \\
   -H "Content-Type: application/json" \\
   -d "{\\"data_type\\":\\"text\\",\\"data\\":\\"$WATERMARKED\\"}" \\
   | jq .`}
@@ -1107,7 +1107,7 @@ curl -s -X POST http://localhost:8000/api/verify \\
                   </button>
                 </a>
                 <a
-                  href="http://localhost:8000/docs"
+                  href="https://hackeurope-lyra.onrender.com/docs"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
