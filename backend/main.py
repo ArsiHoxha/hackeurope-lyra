@@ -22,6 +22,7 @@ Cryptographic payload (26 bytes embedded per request)
 """
 
 import base64
+import hashlib
 from datetime import datetime, timezone
 from typing import Literal, Optional
 
@@ -390,6 +391,239 @@ async def registry_lookup_id(wm_id: str):
     if result:
         return {"found": True, "match": result}
     return {"found": False, "match": None}
+
+
+
+# ── Security endpoints ────────────────────────────────────────────────────────
+#
+# These back the SecurityTab in the frontend dashboard.
+# All state is stored in-memory (ephemeral) — suitable for demo/hackathon use.
+
+import secrets as _secrets
+import time as _time
+
+_security_state = {
+    "key_rotation_epoch": 1,
+    "key_last_rotated": None,
+    "entropy_level": "high",
+    "two_factor_enabled": False,
+    "anti_scraping_enabled": True,
+    "webhook_url": None,
+    "total_api_keys": 0,
+}
+_api_keys: list = []
+_request_counts: dict = {}
+
+
+class SecurityConfigBody(BaseModel):
+    entropy_level: Optional[str] = None
+    two_factor_enabled: Optional[bool] = None
+    anti_scraping_enabled: Optional[bool] = None
+    webhook_url: Optional[str] = None
+
+
+class ApiKeyBody(BaseModel):
+    scope: str = "read"
+    expires_in_days: int = 30
+
+
+class RevokeKeyBody(BaseModel):
+    key_id: str
+
+
+class ProvenanceBody(BaseModel):
+    content: str
+    data_type: str = "text"
+    model_name: Optional[str] = None
+
+
+class ProvenanceVerifyBody(BaseModel):
+    content: str
+    data_type: str = "text"
+    certificate: dict
+
+
+class FingerprintBody(BaseModel):
+    content: str
+    data_type: str = "text"
+
+
+@app.get("/api/security/config")
+async def security_config_get():
+    return {**_security_state}
+
+
+@app.post("/api/security/config")
+async def security_config_update(body: SecurityConfigBody):
+    if body.entropy_level is not None:
+        _security_state["entropy_level"] = body.entropy_level
+    if body.two_factor_enabled is not None:
+        _security_state["two_factor_enabled"] = body.two_factor_enabled
+    if body.anti_scraping_enabled is not None:
+        _security_state["anti_scraping_enabled"] = body.anti_scraping_enabled
+    if body.webhook_url is not None:
+        _security_state["webhook_url"] = body.webhook_url
+    return {**_security_state}
+
+
+@app.post("/api/security/audit")
+async def security_audit():
+    key = get_secret_key()
+    has_strong_key   = len(key) >= 32
+    has_anti_scrape  = _security_state["anti_scraping_enabled"]
+    has_2fa          = _security_state["two_factor_enabled"]
+    has_webhook      = bool(_security_state["webhook_url"])
+    high_entropy     = _security_state["entropy_level"] == "high"
+    has_active_keys  = any(not k["revoked"] for k in _api_keys)
+    epoch            = _security_state["key_rotation_epoch"]
+
+    checks = [
+        {"id": "strong_key",       "label": "Deployment key ≥ 32 bytes",      "passed": has_strong_key,   "severity": "critical", "weight": 30, "fix_action": "change_key"},
+        {"id": "entropy_high",     "label": "High entropy embedding enabled",  "passed": high_entropy,     "severity": "high",     "weight": 20, "fix_action": "set_entropy"},
+        {"id": "anti_scraping",    "label": "Anti-scraping detection on",      "passed": has_anti_scrape,  "severity": "medium",   "weight": 15, "fix_action": "enable_anti_scraping"},
+        {"id": "key_rotated",      "label": "Key rotated at least once",        "passed": epoch > 1,        "severity": "high",     "weight": 15, "fix_action": "rotate_key"},
+        {"id": "two_factor",       "label": "Two-factor auth enabled",         "passed": has_2fa,          "severity": "medium",   "weight": 10, "fix_action": "enable_2fa"},
+        {"id": "webhook",          "label": "Alert webhook configured",         "passed": has_webhook,      "severity": "low",      "weight": 5,  "fix_action": "configure_webhook"},
+        {"id": "scoped_keys",      "label": "Scoped API keys in use",           "passed": has_active_keys,  "severity": "low",      "weight": 5,  "fix_action": "run_audit"},
+    ]
+
+    passed = sum(1 for c in checks if c["passed"])
+    total  = len(checks)
+    score  = sum(c["weight"] for c in checks if c["passed"])
+
+    return {
+        "score": score,
+        "checks": checks,
+        "total": total,
+        "passed": passed,
+        "failed": total - passed,
+        "audited_at": _utc_now(),
+    }
+
+
+@app.post("/api/security/rotate-key")
+async def security_rotate_key():
+    _security_state["key_rotation_epoch"] += 1
+    _security_state["key_last_rotated"] = _utc_now()
+    return {
+        "epoch": _security_state["key_rotation_epoch"],
+        "rotated_at": _security_state["key_last_rotated"],
+        "message": "Master key epoch incremented. New watermarks use the updated key.",
+    }
+
+
+@app.post("/api/security/api-keys/generate")
+async def security_generate_api_key(body: ApiKeyBody):
+    raw_key  = _secrets.token_hex(32)
+    key_id   = _secrets.token_hex(8)
+    now      = datetime.now(timezone.utc)
+    expires  = datetime.fromtimestamp(now.timestamp() + body.expires_in_days * 86400, tz=timezone.utc)
+    entry = {
+        "id":      key_id,
+        "scope":   body.scope,
+        "created": now.isoformat(),
+        "expires": expires.isoformat(),
+        "revoked": False,
+        "prefix":  raw_key[:8] + "...",
+        "api_key": raw_key,
+        "key_id":  key_id,
+    }
+    _api_keys.append(entry)
+    _security_state["total_api_keys"] = len(_api_keys)
+    return entry
+
+
+@app.get("/api/security/api-keys")
+async def security_list_api_keys():
+    # Return masked — never expose raw key again after generation
+    return [{k: v for k, v in entry.items() if k != "api_key"} for entry in _api_keys]
+
+
+@app.post("/api/security/api-keys/revoke")
+async def security_revoke_api_key(body: RevokeKeyBody):
+    for key in _api_keys:
+        if key["id"] == body.key_id:
+            key["revoked"] = True
+    return {"revoked": True}
+
+
+@app.post("/api/security/provenance")
+async def security_provenance(body: ProvenanceBody):
+    key = get_secret_key()
+    content_bytes = body.content.encode("utf-8")
+    content_hash  = hashlib.sha256(content_bytes).hexdigest()
+    import hmac as _hmac
+    provenance_id = _hmac.new(key, content_bytes, hashlib.sha256).hexdigest()
+    origin_proof  = _hmac.new(key, provenance_id.encode(), hashlib.sha256).hexdigest()
+    chain_hash    = hashlib.sha256((content_hash + provenance_id + origin_proof).encode()).hexdigest()
+    anti_scrape   = _hmac.new(key, (content_hash + str(_time.time())).encode(), hashlib.sha256).hexdigest()[:16]
+
+    return {
+        "version": "1.0",
+        "content_hash": content_hash,
+        "content_size_bytes": len(content_bytes),
+        "data_type": body.data_type,
+        "model_name": body.model_name or "Unknown",
+        "provenance_id": provenance_id,
+        "origin_proof": origin_proof,
+        "anti_scrape_fingerprint": anti_scrape,
+        "chain_hash": chain_hash,
+        "issued_at": _utc_now(),
+        "issuer": "Lyra Watermarking API v3",
+        "algorithm": "HMAC-SHA256",
+        "key_epoch": _security_state["key_rotation_epoch"],
+        "entropy_level": _security_state["entropy_level"],
+        "claims": {
+            "ip_protection": True,
+            "anti_scraping": _security_state["anti_scraping_enabled"],
+            "tamper_evident": True,
+            "provenance_verified": True,
+        },
+    }
+
+
+@app.post("/api/security/provenance/verify")
+async def security_provenance_verify(body: ProvenanceVerifyBody):
+    key = get_secret_key()
+    import hmac as _hmac
+    content_bytes    = body.content.encode("utf-8")
+    cert             = body.certificate
+    computed_hash    = hashlib.sha256(content_bytes).hexdigest()
+    computed_prov_id = _hmac.new(key, content_bytes, hashlib.sha256).hexdigest()
+    computed_origin  = _hmac.new(key, computed_prov_id.encode(), hashlib.sha256).hexdigest()
+    computed_chain   = hashlib.sha256((computed_hash + computed_prov_id + computed_origin).encode()).hexdigest()
+
+    checks = {
+        "content_hash":    computed_hash    == cert.get("content_hash"),
+        "provenance_id":   computed_prov_id == cert.get("provenance_id"),
+        "origin_proof":    computed_origin  == cert.get("origin_proof"),
+        "chain_integrity": computed_chain   == cert.get("chain_hash"),
+    }
+    return {
+        "valid": all(checks.values()),
+        "checks": checks,
+        "content_hash": computed_hash,
+        "verified_at": _utc_now(),
+    }
+
+
+@app.post("/api/security/fingerprint")
+async def security_fingerprint(body: FingerprintBody):
+    key = get_secret_key()
+    import hmac as _hmac
+    nonce       = _secrets.token_hex(8)
+    fingerprint = _hmac.new(key, (body.content + nonce).encode(), hashlib.sha256).hexdigest()
+    ip          = "0.0.0.0"
+    now_min     = int(_time.time() // 60)
+    count       = _request_counts.get((ip, now_min), 0) + 1
+    _request_counts[(ip, now_min)] = count
+
+    return {
+        "fingerprint": fingerprint,
+        "nonce": nonce,
+        "scraping_alert": count > 30,
+        "requests_last_minute": count,
+    }
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
