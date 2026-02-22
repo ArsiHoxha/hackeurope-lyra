@@ -86,8 +86,8 @@ export default function DashboardPage() {
       {/* Active tab content */}
       <div className="min-h-[60vh]">
         {activeTab === "overview" && <OverviewTab />}
-        {activeTab === "watermark" && <WatermarkTab />}
-        {activeTab === "verify" && <VerifyTab />}
+        {activeTab === "watermark" && <WatermarkTab onGoToBilling={() => setActiveTab("billing")} />}
+        {activeTab === "verify" && <VerifyTab onGoToBilling={() => setActiveTab("billing")} />}
         {activeTab === "history" && <HistoryTab />}
         {activeTab === "analytics" && <AnalyticsTab />}
         {activeTab === "security" && <SecurityTab />}

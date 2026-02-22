@@ -36,7 +36,7 @@ export function DashboardNavbar() {
 
   useEffect(() => {
     setBalance(getBalance());
-    return onCreditsChange(() => setBalance(getBalance()));
+    return onCreditsChange((newBal) => setBalance(newBal));
   }, []);
 
   const toggleTheme = () => {

@@ -18,6 +18,7 @@ export default function BillingSuccessPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("session_id");
+  const mode = searchParams.get("mode") ?? "live";
   const [result, setResult] = useState<VerifyResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,7 +28,7 @@ export default function BillingSuccessPage() {
     if (!sessionId || processed.current) return;
     processed.current = true;
 
-    fetch(`/api/stripe/verify-session?session_id=${sessionId}`)
+    fetch(`/api/stripe/verify-session?session_id=${sessionId}&mode=${mode}`)
       .then((r) => r.json())
       .then((data: VerifyResult & { error?: string }) => {
         if (data.error) {

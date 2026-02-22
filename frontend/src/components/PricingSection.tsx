@@ -1,18 +1,20 @@
 "use client";
-// ── REPLACED: Apple-style pricing comparison table ───────────────────
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { Check, Minus, Loader2, Sparkles } from "lucide-react";
+// Apple-style pricing comparison table with test/live mode toggle
+import { Fragment, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Check, Minus, Loader2, Sparkles, FlaskConical, Zap, Copy, CheckCheck } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
 import { CREDIT_PACKS, CreditPack } from "@/lib/credits";
 import { Button } from "@/components/ui/button";
 
-// ── Stripe checkout ──────────────────────────────────────────────────
-async function startCheckout(packId: string, userId: string) {
+type PaymentMode = "test" | "live";
+
+// ── Stripe checkout (passes mode to API) ────────────────────────────
+async function startCheckout(packId: string, userId: string, mode: PaymentMode) {
   const res = await fetch("/api/stripe/create-checkout-session", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ packId, userId }),
+    body: JSON.stringify({ packId, userId, mode }),
   });
   const data = await res.json();
   if (data.url) window.location.href = data.url;
@@ -55,22 +57,111 @@ function CellValue({ value }: { value: RowValue }) {
   return <span className="text-sm tabular-nums">{value}</span>;
 }
 
+// ── Mode toggle ──────────────────────────────────────────────────────
+function ModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: PaymentMode;
+  onChange: (m: PaymentMode) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyCard = () => {
+    navigator.clipboard.writeText("4242 4242 4242 4242");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Toggle pill */}
+      <div className="flex items-center gap-1 self-end rounded-full border border-border bg-secondary/60 p-1">
+        <button
+          onClick={() => onChange("test")}
+          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+            mode === "test"
+              ? "bg-amber-400/90 text-amber-950 shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <FlaskConical className="size-3" />
+          Demo
+        </button>
+        <button
+          onClick={() => onChange("live")}
+          className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all duration-200 ${
+            mode === "live"
+              ? "bg-foreground text-background shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Zap className="size-3" />
+          Live
+        </button>
+      </div>
+
+      {/* Test card banner */}
+      <AnimatePresence>
+        {mode === "test" && (
+          <motion.div
+            initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+            animate={{ opacity: 1, height: "auto", marginBottom: 0 }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-amber-300/50 bg-amber-50/80 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-950/30">
+              <div className="flex items-center gap-2">
+                <FlaskConical className="size-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                  Demo mode — no real charges
+                </span>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-white/80 px-3 py-1.5 dark:border-amber-700/40 dark:bg-amber-900/40">
+                <span className="font-mono text-xs font-bold tracking-widest text-amber-900 dark:text-amber-200">
+                  4242 4242 4242 4242
+                </span>
+                <button
+                  onClick={copyCard}
+                  className="text-amber-500 transition-colors hover:text-amber-700"
+                >
+                  {copied ? (
+                    <CheckCheck className="size-3.5 text-emerald-500" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                </button>
+              </div>
+              <span className="text-xs text-amber-700 dark:text-amber-400">
+                Any future date · Any 3-digit CVC
+              </span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 // ── Pack header col ──────────────────────────────────────────────────
 function PackHeaderCol({
   pack,
   popular,
   userId,
+  mode,
 }: {
   pack: CreditPack;
   popular: boolean;
   userId: string;
+  mode: PaymentMode;
 }) {
   const [loading, setLoading] = useState(false);
   const dollars = (pack.price / 100).toFixed(0);
 
   const handleBuy = async () => {
     setLoading(true);
-    try { await startCheckout(pack.id, userId); }
+    try { await startCheckout(pack.id, userId, mode); }
     catch { setLoading(false); }
   };
 
@@ -109,8 +200,43 @@ function PackHeaderCol({
   );
 }
 
+// ── Footer buy cell (own component so useState is not called inside map) ──
+function FooterBuyCell({
+  pack,
+  popular,
+  userId,
+  mode,
+  colClass,
+}: {
+  pack: CreditPack;
+  popular: boolean;
+  userId: string;
+  mode: PaymentMode;
+  colClass: string;
+}) {
+  const [loading, setLoading] = useState(false);
+  const handleBuy = async () => {
+    setLoading(true);
+    try { await startCheckout(pack.id, userId, mode); }
+    catch { setLoading(false); }
+  };
+  return (
+    <td className={`border-t border-r border-border px-5 py-4 last:border-r-0 ${colClass}`}>
+      <Button
+        size="sm"
+        variant={popular ? "default" : "outline"}
+        className="w-full text-xs font-semibold"
+        onClick={handleBuy}
+        disabled={loading}
+      >
+        {loading ? <Loader2 className="size-3.5 animate-spin" /> : `Get ${pack.name}`}
+      </Button>
+    </td>
+  );
+}
+
 // ── Main table ───────────────────────────────────────────────────────
-function PricingTable({ userId }: { userId: string }) {
+function PricingTable({ userId, mode }: { userId: string; mode: PaymentMode }) {
   const popularIdx = CREDIT_PACKS.findIndex((p) => p.popular);
 
   const colBg = (i: number) =>
@@ -125,7 +251,7 @@ function PricingTable({ userId }: { userId: string }) {
             <th className="w-[220px] border-b border-r border-border px-5 py-0 text-left font-normal" />
             {CREDIT_PACKS.map((pack, i) => (
               <th key={pack.id} className={`border-b border-r border-border last:border-r-0 p-0 font-normal ${colBg(i)}`}>
-                <PackHeaderCol pack={pack} popular={i === popularIdx} userId={userId} />
+                <PackHeaderCol pack={pack} popular={i === popularIdx} userId={userId} mode={mode} />
               </th>
             ))}
           </tr>
@@ -136,7 +262,7 @@ function PricingTable({ userId }: { userId: string }) {
           {FEATURE_ROWS.map((row, rowIdx) => {
             const isLast = rowIdx === FEATURE_ROWS.length - 1;
             return (
-              <>
+              <Fragment key={row.label}>
                 {/* Section label row */}
                 {row.section && (
                   <tr key={`section-${row.section}`}>
@@ -163,7 +289,7 @@ function PricingTable({ userId }: { userId: string }) {
                     </td>
                   ))}
                 </tr>
-              </>
+              </Fragment>
             );
           })}
         </tbody>
@@ -172,27 +298,16 @@ function PricingTable({ userId }: { userId: string }) {
         <tfoot>
           <tr>
             <td className="border-t border-border px-5 py-4" />
-            {CREDIT_PACKS.map((pack, i) => {
-              const [loading, setLoading] = useState(false);
-              const handleBuy = async () => {
-                setLoading(true);
-                try { await startCheckout(pack.id, userId); }
-                catch { setLoading(false); }
-              };
-              return (
-                <td key={pack.id} className={`border-t border-r border-border px-5 py-4 last:border-r-0 ${colBg(i)}`}>
-                  <Button
-                    size="sm"
-                    variant={i === popularIdx ? "default" : "outline"}
-                    className="w-full text-xs font-semibold"
-                    onClick={handleBuy}
-                    disabled={loading}
-                  >
-                    {loading ? <Loader2 className="size-3.5 animate-spin" /> : `Get ${pack.name}`}
-                  </Button>
-                </td>
-              );
-            })}
+            {CREDIT_PACKS.map((pack, i) => (
+              <FooterBuyCell
+                key={pack.id}
+                pack={pack}
+                popular={i === popularIdx}
+                userId={userId}
+                mode={mode}
+                colClass={colBg(i)}
+              />
+            ))}
           </tr>
         </tfoot>
       </table>
@@ -208,20 +323,25 @@ interface PricingSectionProps {
 export function PricingSection({ compact }: PricingSectionProps) {
   const { user } = useUser();
   const userId = user?.id ?? "guest";
+  const [mode, setMode] = useState<PaymentMode>("live");
 
   if (compact) {
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="text-xl font-bold">Buy Credits</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            One-time purchase. Credits never expire. No subscriptions.
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold">Buy Credits</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              One-time purchase. Credits never expire.
+            </p>
+          </div>
         </div>
-        <PricingTable userId={userId} />
+        <ModeToggle mode={mode} onChange={setMode} />
+        <PricingTable userId={userId} mode={mode} />
         <p className="text-center text-xs text-muted-foreground">
           Payments processed by{" "}
-          <span className="font-medium text-foreground">Stripe</span>. All major cards accepted.
+          <span className="font-medium text-foreground">Stripe</span>.
+          {mode === "test" && " Demo mode — no real charges."}
         </p>
       </div>
     );
@@ -254,13 +374,16 @@ export function PricingSection({ compact }: PricingSectionProps) {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.45, delay: 0.1 }}
+          className="space-y-4"
         >
-          <PricingTable userId={userId} />
+          <ModeToggle mode={mode} onChange={setMode} />
+          <PricingTable userId={userId} mode={mode} />
         </motion.div>
 
         <p className="text-center text-xs text-muted-foreground">
           Payments processed by{" "}
-          <span className="font-medium text-foreground">Stripe</span>. All major cards accepted.
+          <span className="font-medium text-foreground">Stripe</span>.
+          {mode === "test" && " Demo mode — no real charges."}
         </p>
       </div>
     </section>

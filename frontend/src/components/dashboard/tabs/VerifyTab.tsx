@@ -15,6 +15,8 @@ import {
   Mic,
   Square,
   Trash2,
+  Lock,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +30,7 @@ import {
 } from "@/lib/api";
 import { saveVerifyResult } from "@/lib/store";
 import { blobToWavBase64 } from "@/lib/audio";
+import { spendCredits, getBalance, onCreditsChange, CREDIT_COSTS } from "@/lib/credits";
 
 // ── Types ─────────────────────────────────────────────────────────
 export interface VerificationResult {
@@ -67,7 +70,7 @@ function mapResponse(res: VerifyResponse): VerificationResult {
 }
 
 // ── Component ─────────────────────────────────────────────────────
-export function VerifyTab() {
+export function VerifyTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
   const [inputMode, setInputMode] = useState<"text" | "file" | "audio">("text");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -76,6 +79,14 @@ export function VerifyTab() {
   const [result, setResult] = useState<VerificationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [balance, setBalance] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setBalance(getBalance());
+    return onCreditsChange((newBal) => setBalance(newBal));
+  }, []);
 
   // ── Audio recording state ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -193,10 +204,31 @@ export function VerifyTab() {
     return `${m}:${(s % 60).toString().padStart(2, "0")}`;
   };
 
+  // ── Derive credit cost for current input mode + file type ─────
+  const verifyCost = (() => {
+    if (inputMode === "text") return CREDIT_COSTS.text_verify;
+    if (inputMode === "audio") return CREDIT_COSTS.audio_verify;
+    if (file) {
+      const dt = detectDataType(file);
+      if (dt === "image") return CREDIT_COSTS.image_verify;
+      if (dt === "audio") return CREDIT_COSTS.audio_verify;
+      if (dt === "video") return CREDIT_COSTS.video_verify;
+      return CREDIT_COSTS.text_verify;
+    }
+    return 1;
+  })();
+
   const verify = useCallback(async () => {
     setLoading(true);
     setResult(null);
     setError(null);
+
+    // ── Check balance before hitting the backend ────────────────
+    if (getBalance() < verifyCost) {
+      setError(`Insufficient credits — you need ${verifyCost} credit${verifyCost !== 1 ? "s" : ""} but have ${getBalance()}. Buy more in the Billing tab.`);
+      setLoading(false);
+      return;
+    }
 
     try {
       if (inputMode === "text") {
@@ -206,6 +238,7 @@ export function VerifyTab() {
         });
         const mapped = mapResponse(res);
         setResult(mapped);
+        spendCredits(CREDIT_COSTS.text_verify, "Text verification");
         saveVerifyResult({
           dataType: "text",
           label: text.slice(0, 80).replace(/\n/g, " "),
@@ -225,6 +258,7 @@ export function VerifyTab() {
         });
         const mapped = mapResponse(res);
         setResult(mapped);
+        spendCredits(CREDIT_COSTS.audio_verify, "Audio verification");
         saveVerifyResult({
           dataType: "audio",
           label: `Recording (${formatTime(recordingTime)})`,
@@ -252,6 +286,8 @@ export function VerifyTab() {
         });
         const mapped = mapResponse(res);
         setResult(mapped);
+        const costKey = `${dataType}_verify` as keyof typeof CREDIT_COSTS;
+        spendCredits(CREDIT_COSTS[costKey] ?? 1, `${dataType.charAt(0).toUpperCase() + dataType.slice(1)} verification`);
         saveVerifyResult({
           dataType,
           label: file.name,
@@ -301,6 +337,31 @@ export function VerifyTab() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // ── No-credits gate (after ALL hooks) ─────────────────────────
+  if (mounted && balance === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex min-h-[52vh] flex-col items-center justify-center gap-6 rounded-3xl border border-dashed border-border bg-card/50 p-12 text-center"
+      >
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
+          <Lock className="size-7 text-muted-foreground" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold tracking-tight">No credits remaining</h3>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            You need credits to verify content. Purchase a pack to unlock this feature.
+          </p>
+        </div>
+        <Button onClick={onGoToBilling} className="gap-2">
+          <Sparkles className="size-4" />
+          Buy Credits
+        </Button>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -519,23 +580,39 @@ export function VerifyTab() {
           )}
 
           {/* Submit */}
-          <Button
-            onClick={verify}
-            disabled={!canVerify || loading}
-            className="h-10 w-full gap-2 rounded-xl text-sm font-light"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Scanning…
-              </>
-            ) : (
-              <>
-                Verify
-                <ArrowRight className="size-3.5" />
-              </>
-            )}
-          </Button>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Cost:{" "}
+                <span className="font-medium text-foreground">
+                  {verifyCost} credit{verifyCost !== 1 ? "s" : ""}
+                </span>
+              </span>
+              <span>
+                Balance:{" "}
+                <span className={balance < verifyCost ? "font-semibold text-red-500" : "font-medium text-foreground"}>
+                  {balance.toLocaleString()}
+                </span>
+              </span>
+            </div>
+            <Button
+              onClick={verify}
+              disabled={!canVerify || loading || balance < verifyCost}
+              className="h-10 w-full gap-2 rounded-xl text-sm font-light"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Scanning…
+                </>
+              ) : (
+                <>
+                  Verify
+                  <ArrowRight className="size-3.5" />
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* ── Right: Result ──────────────────────────── */}
@@ -690,14 +767,21 @@ export function VerifyTab() {
                 className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-border/30 p-8 text-center"
               >
                 {error ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <AlertTriangle className="mx-auto size-5 text-destructive" />
                     <p className="text-sm font-light text-destructive">
                       {error}
                     </p>
-                    <p className="text-xs font-light text-muted-foreground/50">
-                      Make sure the backend is running on localhost:8000
-                    </p>
+                    {error.startsWith("Insufficient") ? (
+                      <Button size="sm" variant="outline" onClick={onGoToBilling} className="gap-2">
+                        <Sparkles className="size-3.5" />
+                        Buy Credits
+                      </Button>
+                    ) : (
+                      <p className="text-xs font-light text-muted-foreground/50">
+                        Make sure the backend is running on localhost:8000
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-sm font-light text-muted-foreground/50">

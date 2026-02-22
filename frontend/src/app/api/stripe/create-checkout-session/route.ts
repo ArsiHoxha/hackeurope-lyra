@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { CREDIT_PACKS } from "@/lib/credits";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-01-28.clover",
-});
+// Pick key based on mode sent by the client
+function getStripe(mode: "test" | "live") {
+  const key =
+    mode === "test"
+      ? process.env.STRIPE_TEST_SECRET_KEY!
+      : process.env.STRIPE_LIVE_SECRET_KEY!;
+  return new Stripe(key, { apiVersion: "2026-01-28.clover" });
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { packId, userId } = await req.json();
+    const { packId, userId, mode = "live" } = await req.json();
+    const stripe = getStripe(mode as "test" | "live");
 
     const pack = CREDIT_PACKS.find((p) => p.id === packId);
     if (!pack) {
@@ -19,7 +25,13 @@ export async function POST(req: NextRequest) {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_method_types: ["card"],
+      // No payment_method_types → Stripe uses dynamic payment methods driven
+      // by your Dashboard settings (Settings → Payment methods).  This is the
+      // only way to surface newer methods such as Bancontact, EPS, and
+      // Stablecoins/USDC — the legacy explicit list rejects them at the API
+      // level even when they are Dashboard-enabled.
+      // Ensure "Stablecoins and Crypto" is toggled ON at:
+      // https://dashboard.stripe.com/settings/payment_methods
       line_items: [
         {
           quantity: 1,
@@ -42,8 +54,9 @@ export async function POST(req: NextRequest) {
         packId: pack.id,
         credits: String(pack.credits),
         userId: userId ?? "anonymous",
+        mode,
       },
-      success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${appUrl}/billing/success?session_id={CHECKOUT_SESSION_ID}&mode=${mode}`,
       cancel_url: `${appUrl}/billing/cancel`,
     });
 

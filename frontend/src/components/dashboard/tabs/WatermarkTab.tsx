@@ -16,6 +16,8 @@ import {
   Mic,
   Square,
   Trash2,
+  Lock,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,9 +34,10 @@ import {
 } from "@/lib/api";
 import { saveWatermarkResult } from "@/lib/store";
 import { blobToWavBase64 } from "@/lib/audio";
+import { spendCredits, getBalance, onCreditsChange, CREDIT_COSTS } from "@/lib/credits";
 
 // ── Component ─────────────────────────────────────────────────────
-export function WatermarkTab() {
+export function WatermarkTab({ onGoToBilling }: { onGoToBilling?: () => void }) {
   const [inputMode, setInputMode] = useState<"text" | "file" | "audio">("text");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -46,6 +49,14 @@ export function WatermarkTab() {
   const [resultDataType, setResultDataType] = useState<DataType>("text");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [balance, setBalance] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    setBalance(getBalance());
+    return onCreditsChange((newBalance) => setBalance(newBalance));
+  }, []);
 
   // ── Audio recording state ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
@@ -194,10 +205,31 @@ export function WatermarkTab() {
     return `${m}:${sec.toString().padStart(2, "0")}`;
   };
 
+  // ── Derive credit cost for current input mode + file type ─────
+  const embedCost = (() => {
+    if (inputMode === "text") return CREDIT_COSTS.text_watermark;
+    if (inputMode === "audio") return CREDIT_COSTS.audio_watermark;
+    if (file) {
+      const dt = detectDataType(file);
+      if (dt === "image") return CREDIT_COSTS.image_watermark;
+      if (dt === "audio") return CREDIT_COSTS.audio_watermark;
+      if (dt === "video") return CREDIT_COSTS.video_watermark;
+      return CREDIT_COSTS.text_watermark;
+    }
+    return 1;
+  })();
+
   const embed = useCallback(async () => {
     setLoading(true);
     setResult(null);
     setError(null);
+
+    // ── Check balance before hitting the backend ────────────────
+    if (getBalance() < embedCost) {
+      setError(`Insufficient credits — you need ${embedCost} credit${embedCost !== 1 ? "s" : ""} but have ${getBalance()}. Buy more in the Billing tab.`);
+      setLoading(false);
+      return;
+    }
 
     try {
       if (inputMode === "text") {
@@ -209,6 +241,7 @@ export function WatermarkTab() {
         });
         setResult(res);
         setResultDataType("text");
+        spendCredits(CREDIT_COSTS.text_watermark, "Text watermark");
         saveWatermarkResult({
           dataType: "text",
           label: text.slice(0, 80).replace(/\n/g, " "),
@@ -226,6 +259,7 @@ export function WatermarkTab() {
         });
         setResult(res);
         setResultDataType("audio");
+        spendCredits(CREDIT_COSTS.audio_watermark, "Audio watermark");
         saveWatermarkResult({
           dataType: "audio",
           label: `Recording (${formatTime(recordingTime)})`,
@@ -248,6 +282,8 @@ export function WatermarkTab() {
         });
         setResult(res);
         setResultDataType(dataType);
+        const costKey = `${dataType}_watermark` as keyof typeof CREDIT_COSTS;
+        spendCredits(CREDIT_COSTS[costKey] ?? 1, `${dataType.charAt(0).toUpperCase() + dataType.slice(1)} watermark`);
         saveWatermarkResult({
           dataType,
           label: file.name,
@@ -355,6 +391,31 @@ export function WatermarkTab() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  // ── No-credits gate (after ALL hooks) ─────────────────────────
+  if (mounted && balance === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex min-h-[52vh] flex-col items-center justify-center gap-6 rounded-3xl border border-dashed border-border bg-card/50 p-12 text-center"
+      >
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-muted">
+          <Lock className="size-7 text-muted-foreground" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-lg font-semibold tracking-tight">No credits remaining</h3>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            You need credits to embed watermarks. Purchase a pack to unlock this feature.
+          </p>
+        </div>
+        <Button onClick={onGoToBilling} className="gap-2">
+          <Sparkles className="size-4" />
+          Buy Credits
+        </Button>
+      </motion.div>
+    );
+  }
 
   return (
     <motion.div
@@ -616,24 +677,40 @@ export function WatermarkTab() {
           </div>
 
           {/* Submit */}
-          <Button
-            onClick={embed}
-            disabled={!canEmbed || loading}
-            className="h-10 w-full gap-2 rounded-xl text-sm font-light"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="size-4 animate-spin" />
-                Embedding…
-              </>
-            ) : (
-              <>
-                <Fingerprint className="size-4" />
-                Embed Watermark
-                <ArrowRight className="size-3.5" />
-              </>
-            )}
-          </Button>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span>
+                Cost:{" "}
+                <span className="font-medium text-foreground">
+                  {embedCost} credit{embedCost !== 1 ? "s" : ""}
+                </span>
+              </span>
+              <span>
+                Balance:{" "}
+                <span className={balance < embedCost ? "font-semibold text-red-500" : "font-medium text-foreground"}>
+                  {balance.toLocaleString()}
+                </span>
+              </span>
+            </div>
+            <Button
+              onClick={embed}
+              disabled={!canEmbed || loading || balance < embedCost}
+              className="h-10 w-full gap-2 rounded-xl text-sm font-light"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Embedding…
+                </>
+              ) : (
+                <>
+                  <Fingerprint className="size-4" />
+                  Embed Watermark
+                  <ArrowRight className="size-3.5" />
+                </>
+              )}
+            </Button>
+          </div>
         </div>
 
         {/* ── Right: Result ──────────────────────────── */}
@@ -880,14 +957,21 @@ export function WatermarkTab() {
                 className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-border/30 p-8 text-center"
               >
                 {error ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <AlertTriangle className="mx-auto size-5 text-destructive" />
                     <p className="text-sm font-light text-destructive">
                       {error}
                     </p>
-                    <p className="text-xs font-light text-muted-foreground/50">
-                      Make sure the backend is running on localhost:8000
-                    </p>
+                    {error.startsWith("Insufficient") ? (
+                      <Button size="sm" variant="outline" onClick={onGoToBilling} className="gap-2">
+                        <Sparkles className="size-3.5" />
+                        Buy Credits
+                      </Button>
+                    ) : (
+                      <p className="text-xs font-light text-muted-foreground/50">
+                        Make sure the backend is running on localhost:8000
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="space-y-2">

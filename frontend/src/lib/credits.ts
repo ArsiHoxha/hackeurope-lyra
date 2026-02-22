@@ -34,7 +34,9 @@ export function getWallet(): CreditWallet {
 
 function saveWallet(wallet: CreditWallet) {
   localStorage.setItem(CREDITS_KEY, JSON.stringify(wallet));
-  window.dispatchEvent(new Event(CREDITS_CHANGE_EVENT));
+  window.dispatchEvent(
+    new CustomEvent(CREDITS_CHANGE_EVENT, { detail: { balance: wallet.balance } })
+  );
 }
 
 export function getBalance(): number {
@@ -80,9 +82,10 @@ export function spendCredits(amount: number, description: string): boolean {
   return true;
 }
 
-export function onCreditsChange(cb: () => void): () => void {
-  window.addEventListener(CREDITS_CHANGE_EVENT, cb);
-  return () => window.removeEventListener(CREDITS_CHANGE_EVENT, cb);
+export function onCreditsChange(cb: (balance: number) => void): () => void {
+  const handler = (e: Event) => cb((e as CustomEvent<{ balance: number }>).detail.balance);
+  window.addEventListener(CREDITS_CHANGE_EVENT, handler);
+  return () => window.removeEventListener(CREDITS_CHANGE_EVENT, handler);
 }
 
 // ── Credit costs ─────────────────────────────────────────────────────
