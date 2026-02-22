@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Menu,
@@ -11,8 +11,10 @@ import {
   Sun,
   Moon,
   Bell,
+  Sparkles,
 } from "lucide-react";
 import { UserButton } from "@clerk/nextjs";
+import { getBalance, onCreditsChange } from "@/lib/credits";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -30,6 +32,12 @@ export function DashboardNavbar() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dark, setDark] = useState(true);
+  const [balance, setBalance] = useState(0);
+
+  useEffect(() => {
+    setBalance(getBalance());
+    return onCreditsChange(() => setBalance(getBalance()));
+  }, []);
 
   const toggleTheme = () => {
     const next = !dark;
@@ -98,6 +106,16 @@ export function DashboardNavbar() {
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5">
+          {/* Credit balance pill */}
+          <Link
+            href="/dashboard"
+            onClick={() => {/* billing tab handled via query param */}}
+            className="hidden sm:flex items-center gap-1.5 rounded-full border bg-secondary/60 px-3 py-1 text-xs font-semibold transition-colors hover:bg-secondary"
+          >
+            <Sparkles className="size-3 text-amber-400" />
+            {balance.toLocaleString()} credits
+          </Link>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

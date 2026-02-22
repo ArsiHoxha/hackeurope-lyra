@@ -9,6 +9,7 @@ import {
   Clock,
   BarChart3,
   ShieldCheck,
+  CreditCard,
 } from "lucide-react";
 
 import { OverviewTab } from "@/components/dashboard/tabs/OverviewTab";
@@ -17,6 +18,7 @@ import { VerifyTab } from "@/components/dashboard/tabs/VerifyTab";
 import { HistoryTab } from "@/components/dashboard/tabs/HistoryTab";
 import { AnalyticsTab } from "@/components/dashboard/tabs/AnalyticsTab";
 import { SecurityTab } from "@/components/dashboard/tabs/SecurityTab";
+import { BillingTab } from "@/components/dashboard/tabs/BillingTab";
 
 // ── Tab definitions ─────────────────────────────────────────────────
 const tabs = [
@@ -26,6 +28,7 @@ const tabs = [
   { id: "history", label: "History", icon: Clock },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "billing", label: "Billing", icon: CreditCard },
 ] as const;
 
 type TabId = (typeof tabs)[number]["id"];
@@ -88,6 +91,7 @@ export default function DashboardPage() {
         {activeTab === "history" && <HistoryTab />}
         {activeTab === "analytics" && <AnalyticsTab />}
         {activeTab === "security" && <SecurityTab />}
+        {activeTab === "billing" && <BillingTab />}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { HeroSection } from "@/components/HeroSection";
 import { FeatureGrid } from "@/components/FeatureGrid";
 import { DemoCallout } from "@/components/DemoCallout";
 import { TestimonialSection } from "@/components/TestimonialCard";
+import { PricingSection } from "@/components/PricingSection";
 import { Footer } from "@/components/Footer";
 
 export default function Home() {
@@ -14,6 +15,7 @@ export default function Home() {
         <FeatureGrid />
         <DemoCallout />
         <TestimonialSection />
+        <PricingSection />
       </main>
       <Footer />
     </div>
