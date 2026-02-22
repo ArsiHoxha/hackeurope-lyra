@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { CheckCircle2, Sparkles, ArrowRight, Loader2 } from "lucide-react";
@@ -14,7 +14,8 @@ interface VerifyResult {
   amountTotal: number;
 }
 
-export default function BillingSuccessPage() {
+// ── Inner component — uses useSearchParams safely inside Suspense ─────────────
+function BillingSuccessContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("session_id");
@@ -45,7 +46,7 @@ export default function BillingSuccessPage() {
       })
       .catch(() => setError("Failed to verify payment. Please contact support."))
       .finally(() => setLoading(false));
-  }, [sessionId]);
+  }, [sessionId, mode]);
 
   if (loading) {
     return (
@@ -77,7 +78,6 @@ export default function BillingSuccessPage() {
         transition={{ type: "spring", stiffness: 300, damping: 26 }}
         className="flex max-w-md flex-col items-center gap-6 rounded-3xl border bg-card p-10 text-center shadow-xl"
       >
-        {/* Icon */}
         <motion.div
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
@@ -94,7 +94,6 @@ export default function BillingSuccessPage() {
           </p>
         </div>
 
-        {/* Credits summary */}
         <div className="w-full rounded-2xl border bg-secondary/40 px-6 py-5 space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Pack</span>
@@ -124,5 +123,20 @@ export default function BillingSuccessPage() {
         </Button>
       </motion.div>
     </div>
+  );
+}
+
+// ── Page — wraps content in Suspense (required by Next.js App Router) ─────────
+export default function BillingSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <BillingSuccessContent />
+    </Suspense>
   );
 }

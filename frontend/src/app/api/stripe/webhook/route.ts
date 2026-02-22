@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-01-28.clover",
-});
-
 // Disable body parsing so we can verify the Stripe signature
 export const config = { api: { bodyParser: false } };
 
 export async function POST(req: NextRequest) {
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
+  }
+
+  // Instantiate inside handler — never at module evaluation time
+  const stripe = new Stripe(secretKey, { apiVersion: "2026-01-28.clover" });
+
   const rawBody = await req.text();
   const sig = req.headers.get("stripe-signature") ?? "";
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET ?? "";
