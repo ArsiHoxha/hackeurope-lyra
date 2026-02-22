@@ -3,25 +3,30 @@ import Stripe from "stripe";
 import { CREDIT_PACKS } from "@/lib/credits";
 
 // Pick key based on mode sent by the client
-function getStripe(mode: "test" | "live") {
-  const key =
-    mode === "test"
-      ? process.env.STRIPE_TEST_SECRET_KEY!
-      : process.env.STRIPE_LIVE_SECRET_KEY!;
-  return new Stripe(key, { apiVersion: "2026-01-28.clover" });
+function getStripeKey(mode: "test" | "live"): string | undefined {
+  return mode === "test"
+    ? process.env.STRIPE_TEST_SECRET_KEY
+    : process.env.STRIPE_LIVE_SECRET_KEY;
 }
 
 export async function POST(req: NextRequest) {
   try {
     const { packId, userId, mode = "live" } = await req.json();
-    const stripe = getStripe(mode as "test" | "live");
+
+    const stripeKey = getStripeKey(mode as "test" | "live");
+    if (!stripeKey) {
+      return NextResponse.json({ error: "Stripe not configured" }, { status: 500 });
+    }
+    const stripe = new Stripe(stripeKey, { apiVersion: "2026-01-28.clover" });
 
     const pack = CREDIT_PACKS.find((p) => p.id === packId);
     if (!pack) {
       return NextResponse.json({ error: "Invalid pack ID" }, { status: 400 });
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "https://hackeurope-lyra.vercel.app";
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
