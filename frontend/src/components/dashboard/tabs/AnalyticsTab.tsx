@@ -42,6 +42,8 @@ const radialConfig: ChartConfig = {
   text: { label: "Text", color: "var(--chart-1)" },
   image: { label: "Image", color: "var(--chart-2)" },
   audio: { label: "Audio", color: "var(--chart-3)" },
+  pdf: { label: "PDF", color: "var(--chart-4)" },
+  video: { label: "Video", color: "var(--chart-5)" },
 };
 
 const modelConfig: ChartConfig = {
@@ -95,14 +97,16 @@ function buildAnalytics(entries: HistoryEntry[]) {
   }));
 
   // Content type radial
-  const typeCounts = { text: 0, image: 0, audio: 0 };
-  for (const e of entries) typeCounts[e.dataType]++;
-  const maxType = Math.max(typeCounts.text, typeCounts.image, typeCounts.audio, 1);
+  const typeCounts: Record<string, number> = { text: 0, image: 0, audio: 0, pdf: 0, video: 0 };
+  for (const e of entries) typeCounts[e.dataType] = (typeCounts[e.dataType] ?? 0) + 1;
+  const maxType = Math.max(...Object.values(typeCounts), 1);
   const radialData = [
     { name: "Text", value: Math.round((typeCounts.text / maxType) * 100), fill: "var(--color-chart-1)" },
     { name: "Image", value: Math.round((typeCounts.image / maxType) * 100), fill: "var(--color-chart-2)" },
     { name: "Audio", value: Math.round((typeCounts.audio / maxType) * 100), fill: "var(--color-chart-3)" },
-  ];
+    { name: "PDF", value: Math.round((typeCounts.pdf / maxType) * 100), fill: "var(--color-chart-4)" },
+    { name: "Video", value: Math.round((typeCounts.video / maxType) * 100), fill: "var(--color-chart-5)" },
+  ].filter((d) => d.value > 0);
 
   // Model performance
   const modelMap = new Map<string, { count: number; confSum: number }>();
@@ -391,13 +395,12 @@ export function AnalyticsTab() {
                   <div key={m.model} className="flex items-center gap-2 rounded-xl bg-secondary/50 px-3 py-1.5">
                     <span className="text-[12px] font-medium">{m.model}</span>
                     <Badge
-                      className={`rounded-full px-2 py-0 text-[10px] font-semibold ${
-                        m.avgConf >= 90
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : m.avgConf >= 70
-                            ? "bg-amber-500/10 text-amber-500"
-                            : "bg-red-500/10 text-red-500"
-                      }`}
+                      className={`rounded-full px-2 py-0 text-[10px] font-semibold ${m.avgConf >= 90
+                        ? "bg-emerald-500/10 text-emerald-500"
+                        : m.avgConf >= 70
+                          ? "bg-amber-500/10 text-amber-500"
+                          : "bg-red-500/10 text-red-500"
+                        }`}
                     >
                       avg {m.avgConf}%
                     </Badge>
