@@ -1,5 +1,5 @@
 /**
- * Lyra Watermarking API client
+ * Attestify Watermarking API client
  *
  * Connects the Next.js frontend to the FastAPI backend at /api/watermark
  * and /api/verify.  All network calls go through these typed helpers.

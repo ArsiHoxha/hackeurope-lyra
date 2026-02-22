@@ -6,7 +6,7 @@ export function DashboardFooter() {
       <div className="px-6 py-4">
         <div className="flex flex-col items-center justify-between gap-2 sm:flex-row">
           <p className="text-[12px] text-muted-foreground">
-            © {new Date().getFullYear()} CryptoAI Watermarker. All rights reserved.
+            © {new Date().getFullYear()} Attestify Watermarker. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
             <a href="#" className="text-[12px] text-muted-foreground transition-colors hover:text-foreground">

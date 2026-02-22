@@ -279,7 +279,7 @@ export function SecurityTab() {
         await handleUpdateConfig({ two_factor_enabled: true } as Partial<SecurityConfig>);
         break;
       case "configure_webhook":
-        await handleUpdateConfig({ webhook_url: "https://hooks.example.com/lyra" } as Partial<SecurityConfig>);
+        await handleUpdateConfig({ webhook_url: "https://hooks.example.com/attestify" } as Partial<SecurityConfig>);
         break;
       case "run_audit":
         await handleAudit();
@@ -1055,7 +1055,7 @@ export function SecurityTab() {
               <div className="flex gap-2">
                 <Input
                   className="h-9 text-[12px] flex-1"
-                  placeholder="https://hooks.example.com/lyra-alerts"
+                  placeholder="https://hooks.example.com/attestify-alerts"
                   value={config.webhook_url ?? ""}
                   onChange={(e) =>
                     handleUpdateConfig({

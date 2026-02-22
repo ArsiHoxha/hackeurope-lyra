@@ -43,7 +43,7 @@ export function VerificationResultCard({ result }: VerificationResultCardProps) 
   const [copied, setCopied] = useState(false);
 
   const copyReport = () => {
-    const report = `CryptoAI Watermark Verification Report
+    const report = `Attestify Watermark Verification Report
 ─────────────────────────────────
 Status: Watermark ${result.found ? "Found ✅" : "Not Found ❌"}
 Confidence: ${result.confidence}%

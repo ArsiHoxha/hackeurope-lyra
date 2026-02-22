@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Shield,
   Menu,
   X,
   Sun,
@@ -32,7 +32,7 @@ import {
 
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/dashboard/docs", label: "Docs" },
+  { href: "/docs", label: "Docs" },
   { href: "/dashboard/about", label: "About" },
 ];
 
@@ -68,12 +68,13 @@ export function DashboardNavbar() {
           </Button>
 
           <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-              <Shield className="size-4 text-primary-foreground" />
-            </div>
-            <span className="hidden text-[15px] font-semibold tracking-tight sm:block">
-              CryptoAI Watermarker
-            </span>
+            <Image
+              src="/attestify-logo.png"
+              alt="Attestify"
+              width={120}
+              height={40}
+              className="hidden h-8 w-auto object-contain dark:invert sm:block"
+            />
           </Link>
         </div>
 
@@ -169,7 +170,7 @@ export function DashboardNavbar() {
             <DropdownMenuContent align="end" className="w-48">
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium">Alex Chen</p>
-                <p className="text-xs text-muted-foreground">alex@cryptoai.io</p>
+                <p className="text-xs text-muted-foreground">alex@attestify.io</p>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem>

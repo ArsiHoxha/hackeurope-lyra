@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -22,12 +23,13 @@ export function Navbar() {
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary">
-            <Shield className="size-4 text-primary-foreground" />
-          </div>
-          <span className="text-[15px] font-semibold tracking-tight">
-            CryptoAI<span className="text-muted-foreground">Watermarker</span>
-          </span>
+          <Image
+            src="/attestify-logo.png"
+            alt="Attestify"
+            width={120}
+            height={40}
+            className="h-8 w-auto object-contain dark:invert"
+          />
         </Link>
 
         {/* Desktop Nav */}

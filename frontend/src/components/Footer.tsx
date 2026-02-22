@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Shield } from "lucide-react";
+import Image from "next/image";
 import { Separator } from "@/components/ui/separator";
 
 const footerLinks = {
@@ -31,12 +31,13 @@ export function Footer() {
           {/* Brand */}
           <div>
             <Link href="/" className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-foreground">
-                <Shield className="size-4 text-background" />
-              </div>
-              <span className="font-bold">
-                CryptoAI<span className="text-muted-foreground">Watermark</span>
-              </span>
+              <Image
+                src="/attestify-logo.png"
+                alt="Attestify"
+                width={120}
+                height={40}
+                className="h-8 w-auto object-contain dark:invert"
+              />
             </Link>
             <p className="mt-4 text-sm text-muted-foreground">
               Enterprise-grade cryptographic watermarking for AI models and
@@ -99,7 +100,7 @@ export function Footer() {
 
         <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
           <p className="text-xs text-muted-foreground">
-            &copy; {new Date().getFullYear()} CryptoAI Watermark. All rights
+            &copy; {new Date().getFullYear()} Attestify Watermark. All rights
             reserved.
           </p>
           <p className="text-xs text-muted-foreground">

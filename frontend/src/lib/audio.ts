@@ -1,5 +1,5 @@
 /**
- * Audio recording & WAV encoding utilities for Lyra.
+ * Audio recording & WAV encoding utilities for Attestify.
  *
  * The backend expects base64-encoded WAV files, but the browser's
  * MediaRecorder produces WebM/Opus. This module provides:

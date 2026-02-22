@@ -136,8 +136,8 @@ export function AnalyticsTab() {
 
   useEffect(() => {
     load();
-    window.addEventListener("lyra-history-change", load);
-    return () => window.removeEventListener("lyra-history-change", load);
+    window.addEventListener("attestify-history-change", load);
+    return () => window.removeEventListener("attestify-history-change", load);
   }, [load]);
 
   const { coverageData, trendData, dailyData, radialData, modelData } = useMemo(

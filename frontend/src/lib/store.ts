@@ -27,7 +27,7 @@ export interface HistoryEntry {
   watermarkId?: string;
 }
 
-const STORAGE_KEY = "lyra_history";
+const STORAGE_KEY = "attestify_history";
 
 // ── Read / write helpers ──────────────────────────────────────────
 
@@ -45,7 +45,7 @@ function write(entries: HistoryEntry[]) {
   if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
   // Notify any listeners
-  window.dispatchEvent(new Event("lyra-history-change"));
+  window.dispatchEvent(new Event("attestify-history-change"));
 }
 
 // ── Public API ────────────────────────────────────────────────────

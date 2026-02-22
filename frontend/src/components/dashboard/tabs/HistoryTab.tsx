@@ -73,8 +73,8 @@ export function HistoryTab() {
 
   useEffect(() => {
     load();
-    window.addEventListener("lyra-history-change", load);
-    return () => window.removeEventListener("lyra-history-change", load);
+    window.addEventListener("attestify-history-change", load);
+    return () => window.removeEventListener("attestify-history-change", load);
   }, [load]);
 
   const filtered = entries.filter((e) => {
@@ -107,7 +107,7 @@ export function HistoryTab() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `lyra-history-${Date.now()}.csv`;
+    a.download = `attestify-history-${Date.now()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
